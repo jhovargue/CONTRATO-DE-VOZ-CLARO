@@ -56,7 +56,6 @@ def guardar_registros(registros):
 if "db_clientes" not in st.session_state:
     st.session_state.db_clientes = cargar_registros()
 
-# Valores actuales en memoria
 if "form_data" not in st.session_state:
     st.session_state.form_data = {
         "asesor": "JHONNIER VARELA",
@@ -76,12 +75,19 @@ if "form_data" not in st.session_state:
         "num_portar": "",
         "operador": "MOVISTAR",
         "modalidad_porta": "POSTPAGO",
-        "servicio_sel": "2 PLAY I+T",
+        "campana_sel": "REGULAR",
+        "servicio_sel": "1 PLAY",
         "tec_elegida": "FTTH",
         "internet_val": "400",
         "cant_mesh": 1,
         "cant_decos": 0
     }
+
+# Limpieza del nombre comercial para el contrato (muestra solo 2 PLAY)
+def normalizar_nombre_servicio(servicio):
+    if servicio in ["2 PLAY I+C", "2 PLAY I+T"]:
+        return "2 PLAY"
+    return servicio
 
 # --- LOGO OFICIAL VECTORIAL CLARO EMPRESAS ---
 SVG_CLARO_EMPRESAS = """
@@ -208,7 +214,8 @@ def generar_pdf_contratos_completo(datos, plan_info):
         story.append(Spacer(1, 0.2 * cm))
 
     nom_tec = "Fibra Óptica" if plan_info["tecnologia"] == "FTTH" else "Fibra Coaxial"
-    p1 = f"Ud, solicitó el paquete <b>{plan_info['servicio']} {nom_tec}</b> con costo mensual de <b>S/{plan_info['tarifa_reg']:.2f}</b>. La contratación y activación del paquete está sujeta a la verificación de facilidades técnicas en el domicilio indicado. Para lo cual, CLARO se contactará con Ud. al número brindado para coordinar la fecha de la visita de instalación."
+    nombre_plan_mostrar = normalizar_nombre_servicio(plan_info["servicio"])
+    p1 = f"Ud, solicitó el paquete <b>{nombre_plan_mostrar} {nom_tec}</b> con costo mensual de <b>S/{plan_info['tarifa_reg']:.2f}</b>. La contratación y activación del paquete está sujeta a la verificación de facilidades técnicas en el domicilio indicado. Para lo cual, CLARO se contactará con Ud. al número brindado para coordinar la fecha de la visita de instalación."
     story.append(Paragraph(p1, p_body))
     story.append(Spacer(1, 0.12 * cm))
 
@@ -221,13 +228,22 @@ def generar_pdf_contratos_completo(datos, plan_info):
         p_net = f"• Internet fijo con velocidad de <b>{plan_info['internet']} Mbps</b>. CLARO garantiza el 70% de la velocidad contratada."
         story.append(Paragraph(p_net, p_body))
 
+    # 1. SERVICIOS CLOUD
     clouds = obtener_servicios_cloud(plan_info["cloud_count"])
     if clouds:
         p_cloud_tit = f"• Servicios Cloud: Recibirá {len(clouds)} herramientas digitales (servicios cloud), las cuales son:"
         story.append(Paragraph(p_cloud_tit, p_body))
         for c in clouds:
             story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;{c}", p_body))
-        story.append(Paragraph("Se comunicarán con usted para efectuar la activación del beneficio si lo requiere.", p_body))
+        story.append(Paragraph("Se comunicaran con usted para efectuar la activación del beneficio si lo requiere.", p_body))
+
+    # 2. CLARO TV DESPUÉS DE LOS SERVICIOS CLOUD
+    if plan_info["tiene_tv"]:
+        if plan_info["tecnologia"] == "FTTH":
+            p_tv = "• <b>Claro TV+ Estándar Pro con 105 canales</b>"
+        else:
+            p_tv = "• <b>Claro TV Estándar Pro con 62 canales en HD y 102 canales en Standard</b>"
+        story.append(Paragraph(p_tv, p_body))
 
     if plan_info["tiene_telf"]:
         p_telf = "• Telefonía fija con 5000 minutos para llamar a destinos nacionales fijo y móvil; 100 minutos para fijos de: EE.UU. (incluido Alaska y Hawái), México, Puerto Rico y Canadá."
@@ -237,11 +253,6 @@ def generar_pdf_contratos_completo(datos, plan_info):
     if cant_mesh > 0:
         p_wifi = f"• Recibirá un servicio WIFI 360 sin costo que incluye {cant_mesh} equipo(s) repetidor(es) en préstamo."
         story.append(Paragraph(p_wifi, p_body))
-
-    cant_decos = plan_info["cant_decos"]
-    if plan_info["tiene_tv"] and cant_decos > 0:
-        p_deco_txt = f"• Incluye {cant_decos} decodificador(es) adicional(es) para el servicio Claro TV."
-        story.append(Paragraph(p_deco_txt, p_body))
 
     if plan_info["bono"] != "-":
         p_bono = f"• Por promoción los 12 primeros meses navegará a una velocidad de <b>{plan_info['bono']} Megabits por segundo</b>."
@@ -254,18 +265,24 @@ def generar_pdf_contratos_completo(datos, plan_info):
     story.append(Paragraph("Perderá la promoción si solicita la baja de uno o más de los servicios contratados, realice un cambio a un plan inferior, cambio de titularidad o cambio de número.", p_body))
     story.append(Spacer(1, 0.18 * cm))
 
-    # EQUIPOS EN PRÉSTAMO CON ONT O EMTA SEGÚN LA TECNOLOGÍA
+    cant_decos = plan_info["cant_decos"]
+    if plan_info["tiene_tv"]:
+        p_puntos_tv = f"Puntos adicionales de TV por un total de S/0 al mes, adicional a su paquete, compuesto por {cant_decos} de Claro TV HDTV"
+        story.append(Paragraph(p_puntos_tv, p_body))
+        story.append(Spacer(1, 0.18 * cm))
+
     story.append(Paragraph("<b>Ud. obtendrá equipos que serán entregados en préstamo y que deberá devolver en su totalidad al término de su contrato:</b>", p_bold))
     if plan_info["tiene_telf"]:
         story.append(Paragraph("• 1 equipo telefónico con pantalla", p_body))
     if plan_info["tiene_net"]:
-        tipo_router_pdf = "ONT" if plan_info["tecnologia"] == "FTTH" else "EMTA"
-        story.append(Paragraph(f"• 1 equipo router {tipo_router_pdf} Incluye 4 puertos Ethernet y conexión Wifi", p_body))
+        tipo_router_pdf = "ONT" if plan_info["tecnologia"] == "FTTH" else "EMTA"[cite: 8]
+        story.append(Paragraph(f"• 1 equipo router {tipo_router_pdf} Incluye 4 puertos Ethernet y conexión Wifi.", p_body))
     if cant_mesh > 0:
         story.append(Paragraph(f"• {cant_mesh} equipo(s) repetidor(es) Wifi 360", p_body))
     if plan_info["tiene_tv"]:
-        total_decos = 1 + cant_decos
-        story.append(Paragraph(f"• {total_decos} equipo(s) decodificador(es) Claro TV", p_body))
+        story.append(Paragraph("• 1 Decodificadores que se incluyen en el plan", p_body))
+        if cant_decos > 0:
+            story.append(Paragraph(f"• {cant_decos} Decodificadores adicionales", p_body))
     story.append(Paragraph("De no devolverlos, deberá pagar una penalidad.", p_body))
     story.append(Spacer(1, 0.18 * cm))
 
@@ -274,7 +291,7 @@ def generar_pdf_contratos_completo(datos, plan_info):
             "Para activar el servicio Cloud es obligatorio brindar: Nombre, número, correo de la persona de contacto y correo empresarial.<br/>"
             "• Para velocidades desde 400 Mbps, si el cliente tiene Email Empresas y Microsoft 365, debe contar con un dominio propio para cada servicio; de lo contrario, solo practicale elegir uno (son excluyentes).<br/>"
             "• Para Email Empresas, Microsoft 365 y Tienda Virtual, el cliente debe contar con dominio propio. Si no tiene uno, Claro entregará un dominio .com gratis por 12 meses.<br/>"
-            "<b>Más información sobre Servicios Cloud: https://www.claro.com.pe/negocios/soluciones/cloud/</b>"
+            "<b>Más información sobre Servicios Cloud: https://www.claro.com.pe/negocios/soluciones/cloud/</b>"[cite: 21]
         )
         story.append(Paragraph(p_reglas_cloud, p_legal))
         story.append(Spacer(1, 0.2 * cm))
@@ -282,13 +299,12 @@ def generar_pdf_contratos_completo(datos, plan_info):
     story.append(Paragraph(f'<b>"PARA COMPLETAR EL REGISTRO DE SU SOLICITUD, POR FAVOR, DIGA: \'{datos["indicar"]}\'".</b>', p_bold))
     story.append(Spacer(1, 0.15 * cm))
 
-    # Cláusula de Protección de Datos Personales
     p_datos_personales = (
         "Le informo que CLARO, ubicado en Av. Nicolás Arriola N° 480, Santa Catalina, La Victoria, Lima, es el responsable del tratamiento "
         "de sus datos, los cuales se registran en el banco de datos de 'Clientes' para gestionar la contratación de los servicios solicitados. "
         "CLARO podrá compartirlos con proveedores que realizan servicios por encargo, los cuales podrá conocer en la Política de Privacidad "
         "publicada en Claro.pe. Los datos brindados son necesarios para atender su solicitud, de lo contrario no podría ser atendida. "
-        "Podrá ejercer sus derechos de Acceso, Rectificación, Cancelación y Oposición al correo electrónico proteccióndedatos@claro.com.pe."
+        "Podrá ejercer sus derechos de Acceso, Rectificación, Cancelación y Oposición al correo electrónico proteccióndedatos@claro.com.pe."[cite: 8, 19]
     )
     story.append(Paragraph(p_datos_personales, p_legal))
     story.append(Spacer(1, 0.2 * cm))
@@ -353,7 +369,8 @@ with col_reg3:
             "lugar_fecha_nac": "", "padres": "", "contacto": "", "direccion": "",
             "correo": "", "indicar": "SI ACEPTO", "tipo_solicitud": "Línea Nueva (Alta)",
             "num_portar": "", "operador": "MOVISTAR", "modalidad_porta": "POSTPAGO",
-            "servicio_sel": "2 PLAY I+T", "tec_elegida": "FTTH", "internet_val": "400",
+            "campana_sel": "REGULAR",
+            "servicio_sel": "1 PLAY", "tec_elegida": "FTTH", "internet_val": "400",
             "cant_mesh": 1, "cant_decos": 0
         }
         st.session_state.last_loaded_ruc = None
@@ -414,9 +431,13 @@ with col_form:
             fd["operador"] = ""
             fd["modalidad_porta"] = ""
 
-    with st.expander("🌐 6. Paquete, Tecnología y Tarifas", expanded=True):
+    with st.expander("🌐 6. Campaña, Paquete, Tecnología y Tarifas", expanded=True):
+        lista_camp = ["REGULAR", "PROMO 1 SOL"]
+        idx_camp = lista_camp.index(fd.get("campana_sel", "REGULAR")) if fd.get("campana_sel", "REGULAR") in lista_camp else 0
+        fd["campana_sel"] = st.selectbox("Campaña:", lista_camp, index=idx_camp)
+
         lista_serv = ["1 PLAY", "1 PLAY TELF", "2 PLAY I+C", "2 PLAY I+T", "3 PLAY"]
-        idx_serv = lista_serv.index(fd["servicio_sel"]) if fd["servicio_sel"] in lista_serv else 3
+        idx_serv = lista_serv.index(fd["servicio_sel"]) if fd["servicio_sel"] in lista_serv else 0
         fd["servicio_sel"] = st.selectbox("SERVICIO:", lista_serv, index=idx_serv)
 
         lista_tec = ["FTTH", "HFC"]
@@ -428,11 +449,20 @@ with col_form:
             lista_spd = ["200", "300", "400", "800", "1000"]
             idx_spd = lista_spd.index(fd["internet_val"]) if fd["internet_val"] in lista_spd else 2
             fd["internet_val"] = st.selectbox("internet (Velocidad Mbps):", lista_spd, index=idx_spd)
-            tarifa_obj = CATALOGO_PRECIOS.get(fd["servicio_sel"], CATALOGO_PRECIOS["1 PLAY"]).get(fd["internet_val"], {"reg": 94.0, "promo": 74.0, "bono": "1000", "meses_promo": 6, "cloud_count": 5})
+            tarifa_base = CATALOGO_PRECIOS.get(fd["servicio_sel"], CATALOGO_PRECIOS["1 PLAY"]).get(fd["internet_val"], {"reg": 94.0, "promo": 74.0, "bono": "1000", "meses_promo": 6, "cloud_count": 5})
+            tarifa_obj = dict(tarifa_base)
         else:
             fd["internet_val"] = "NO APLICA"
-            tarifa_obj = CATALOGO_PRECIOS["1 PLAY TELF"]["NO APLICA"]
+            tarifa_obj = dict(CATALOGO_PRECIOS["1 PLAY TELF"]["NO APLICA"])
             st.selectbox("internet (Velocidad Mbps):", ["NO APLICA (Solo Telefonía)"], disabled=True)
+
+        # Regla especial de Campaña PROMO 1 SOL (Solo aplica en 1 PLAY de 400 Mbps)
+        if fd["campana_sel"] == "PROMO 1 SOL":
+            if fd["servicio_sel"] == "1 PLAY" and fd["internet_val"] == "400":
+                tarifa_obj["promo"] = 1.00
+                tarifa_obj["meses_promo"] = 2
+            else:
+                st.warning("⚠️ La campaña PROMO 1 SOL aplica únicamente para el paquete 1 PLAY de 400 Mbps. Se aplicará la tarifa regular.")
 
         if tarifa_obj["meses_promo"] > 0 and tarifa_obj["promo"] < tarifa_obj["reg"]:
             st.info(f"💡 **Tarifa Regular:** S/ {tarifa_obj['reg']:.2f} | **Promo:** S/ {tarifa_obj['promo']:.2f} por {tarifa_obj['meses_promo']} meses | **Bono:** {tarifa_obj['bono']} Mbps")
@@ -481,6 +511,7 @@ datos_actuales = {
 }
 
 plan_info_actual = {
+    "campana": fd.get("campana_sel", "REGULAR"),
     "servicio": fd["servicio_sel"],
     "tecnologia": fd["tec_elegida"],
     "internet": fd["internet_val"],
@@ -596,6 +627,7 @@ with col_preview:
 
     else:
         nom_tec_html = "Fibra Óptica" if fd["tec_elegida"] == "FTTH" else "Fibra Coaxial"
+        nombre_plan_mostrar_html = normalizar_nombre_servicio(fd["servicio_sel"])
         lista_cloud = obtener_servicios_cloud(tarifa_obj["cloud_count"])
         cloud_items_html = "".join([f"<div>&nbsp;&nbsp;&nbsp;&nbsp;{c}</div>" for c in lista_cloud])
 
@@ -617,16 +649,18 @@ with col_preview:
             <div style="margin-top: 6px;">• Telefonía fija con 5000 minutos para llamar a destinos nacionales fijo y móvil 100 minutos para fijos de: E.E.U.U.(incluido Alaska y Hawái), México, Puerto Rico y Canadá.</div>
             """
 
+        # CLARO TV DESPUÉS DE LOS SERVICIOS CLOUD
+        tv_canales_html = ""
+        if tiene_tv:
+            if fd["tec_elegida"] == "FTTH":
+                tv_canales_html = "<div style='margin-top: 6px;'>• <b>Claro TV+ Estándar Pro con 105 canales</b></div>"
+            else:
+                tv_canales_html = "<div style='margin-top: 6px;'>• <b>Claro TV Estándar Pro con 62 canales en HD y 102 canales en Standard</b></div>"
+
         wifi_html = ""
         if fd["cant_mesh"] > 0:
             wifi_html = f"""
             <div style="margin-top: 6px;">• Recibirá un servicio WIFI 360 sin costo que incluye {fd['cant_mesh']} equipo(s) repetidor(es) en préstamo.</div>
-            """
-
-        decos_adc_html = ""
-        if tiene_tv and fd["cant_decos"] > 0:
-            decos_adc_html = f"""
-            <div style="margin-top: 6px;">• Incluye {fd['cant_decos']} decodificador(es) adicional(es) para el servicio Claro TV.</div>
             """
 
         promo_html = ""
@@ -635,17 +669,26 @@ with col_preview:
             <div style="margin-top: 6px;">• Además, por los {tarifa_obj['meses_promo']} primeros meses <b>DEBERÁ PAGAR S/ {tarifa_obj['promo']:.2f} al mes</b>. Luego se le cobrará la tarifa regular. Los servicios adicionales no están incluidos en la promoción.</div>
             """
 
+        puntos_tv_html = ""
+        if tiene_tv:
+            puntos_tv_html = f"""
+            <div style="margin-top: 10px; margin-bottom: 8px;">
+                Puntos adicionales de TV por un total de S/0 al mes, adicional a su paquete, compuesto por {fd['cant_decos']} de Claro TV HDTV
+            </div>
+            """
+
         tipo_router_html = "ONT" if fd["tec_elegida"] == "FTTH" else "EMTA"
         equipos_prestamo_html = ""
         if tiene_telf:
             equipos_prestamo_html += "<div>• 1 equipo telefónico con pantalla</div>"
         if tiene_net:
-            equipos_prestamo_html += f"<div>• 1 equipo router {tipo_router_html} Incluye 4 puertos Ethernet y conexión Wifi</div>"
+            equipos_prestamo_html += f"<div>• 1 equipo router {tipo_router_html} Incluye 4 puertos Ethernet y conexión Wifi.</div>"
         if fd["cant_mesh"] > 0:
             equipos_prestamo_html += f"<div>• {fd['cant_mesh']} equipo(s) repetidor(es) Wifi 360</div>"
         if tiene_tv:
-            total_decos = 1 + fd["cant_decos"]
-            equipos_prestamo_html += f"<div>• {total_decos} equipo(s) decodificador(es) Claro TV</div>"
+            equipos_prestamo_html += "<div>• 1 Decodificadores que se incluyen en el plan</div>"
+            if fd["cant_decos"] > 0:
+                equipos_prestamo_html += f"<div>• {fd['cant_decos']} Decodificadores adicionales</div>"
 
         html_contrato_exacto = f"""
         <!DOCTYPE html>
@@ -735,7 +778,7 @@ with col_preview:
                 <hr style="border: 0; border-top: 1px solid #ddd; margin: 16px 0;">
 
                 <p style="margin: 0 0 10px 0; text-align: justify;">
-                    Ud, solicitó el paquete <b>{fd['servicio_sel']} {nom_tec_html}</b> con costo mensual de <b>S/{tarifa_obj['reg']:.2f}</b>. La contratación y activación del paquete está sujeta a la verificación de facilidades técnicas en el domicilio indicado. Para lo cual, CLARO se contactará con Ud. al número brindado para coordinar la fecha de la visita de instalación.
+                    Ud, solicitó el paquete <b>{nombre_plan_mostrar_html} {nom_tec_html}</b> con costo mensual de <b>S/{tarifa_obj['reg']:.2f}</b>. La contratación y activación del paquete está sujeta a la verificación de facilidades técnicas en el domicilio indicado. Para lo cual, CLARO se contactará con Ud. al número brindado para coordinar la fecha de la visita de instalación.
                 </p>
 
                 <p style="margin: 0 0 10px 0; text-align: justify;">
@@ -744,14 +787,16 @@ with col_preview:
 
                 <div style="font-weight: bold; margin-bottom: 4px;">El paquete incluye:</div>
                 {'<div>• Internet fijo con velocidad de <b>' + str(fd['internet_val']) + ' Mbps</b>. CLARO garantiza el 70% de la velocidad contratada.</div>' if tiene_net else ''}
-                {('<div style="margin-top: 4px;">• Servicios Cloud: Recibirá ' + str(len(lista_cloud)) + ' herramientas digitales (servicios cloud), las cuales son:</div>' + cloud_items_html + '<div style="font-size: 12px; color: #555; margin-top: 2px;">Se comunicarán con usted para efectuar la activación del beneficio si lo requiere.</div>') if lista_cloud else ''}
+                {('<div style="margin-top: 4px;">• Servicios Cloud: Recibirá ' + str(len(lista_cloud)) + ' herramientas digitales (servicios cloud), las cuales son:</div>' + cloud_items_html + '<div style="font-size: 12px; color: #555; margin-top: 2px;">Se comunicaran con usted para efectuar la activación del beneficio si lo requiere.</div>') if lista_cloud else ''}
+                {tv_canales_html}
 
                 {telf_html}
                 {wifi_html}
-                {decos_adc_html}
                 {('<div style="margin-top: 6px;">• Por promoción los 12 primeros meses navegará a una velocidad de <b>' + str(tarifa_obj["bono"]) + ' Megabits por segundo</b>.</div>') if tarifa_obj["bono"] != "-" else ''}
                 {promo_html}
                 <div style="margin-top: 6px; font-size: 12px; color: #555;">Perderá la promoción si solicita la baja de uno o más de los servicios contratados, realice un cambio a un plan inferior, cambio de titularidad o cambio de número.</div>
+
+                {puntos_tv_html}
 
                 <div style="font-weight: bold; margin-top: 12px; margin-bottom: 4px;">Ud. obtendrá equipos que serán entregados en préstamo y que deberá devolver en su totalidad al término de su contrato:</div>
                 {equipos_prestamo_html}
