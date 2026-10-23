@@ -19,7 +19,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Evitar conflicto con el traductor automático
 st.markdown(
     """
     <script>document.documentElement.setAttribute('translate', 'no');</script>
@@ -28,7 +27,6 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# RUTA ABSOLUTA LOCAL EN DISCO C:\ (EVITA EL ERROR DE GOOGLE DRIVE H:)
 DIR_LOCAL = Path.home() / ".claro_contratos"
 try:
     DIR_LOCAL.mkdir(parents=True, exist_ok=True)
@@ -78,18 +76,16 @@ if "form_data" not in st.session_state:
         "campana_sel": "REGULAR",
         "servicio_sel": "1 PLAY",
         "tec_elegida": "FTTH",
-        "internet_val": "400",
+        "internet_val": "200",
         "cant_mesh": 1,
         "cant_decos": 0
     }
 
-# Limpieza del nombre comercial para el contrato (muestra solo 2 PLAY)
 def normalizar_nombre_servicio(servicio):
     if servicio in ["2 PLAY I+C", "2 PLAY I+T"]:
         return "2 PLAY"
     return servicio
 
-# --- LOGO OFICIAL VECTORIAL CLARO EMPRESAS ---
 SVG_CLARO_EMPRESAS = """
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 65" style="height: 38px; width: auto; display: block;">
   <text x="5" y="48" font-family="'Segoe UI', Arial, sans-serif" font-size="46" font-weight="900" fill="#DA291C" letter-spacing="-1.5">Claro</text>
@@ -110,35 +106,35 @@ def dibujar_logo_claro_empresas_pdf():
 
 CATALOGO_PRECIOS = {
     "1 PLAY": {
-        "200": {"reg": 69.0, "promo": 69.0, "bono": "400", "meses_promo": 0, "cloud_count": 2},
-        "300": {"reg": 79.0, "promo": 79.0, "bono": "600", "meses_promo": 0, "cloud_count": 4},
-        "400": {"reg": 89.0, "promo": 69.0, "bono": "1000", "meses_promo": 6, "cloud_count": 5},
-        "800": {"reg": 100.0, "promo": 100.0, "bono": "1000", "meses_promo": 0, "cloud_count": 6},
-        "1000": {"reg": 145.0, "promo": 119.0, "bono": "1000", "meses_promo": 6, "cloud_count": 6}
+        "200": {"reg": 69.0, "promo": 69.0, "bono": "400", "meses_bono": 6, "meses_promo": 0, "cloud_count": 2},
+        "300": {"reg": 79.0, "promo": 79.0, "bono": "600", "meses_bono": 6, "meses_promo": 0, "cloud_count": 4},
+        "400": {"reg": 89.0, "promo": 69.0, "bono": "1000", "meses_bono": 12, "meses_promo": 6, "cloud_count": 5},
+        "800": {"reg": 100.0, "promo": 100.0, "bono": "1000", "meses_bono": 12, "meses_promo": 0, "cloud_count": 6},
+        "1000": {"reg": 145.0, "promo": 119.0, "bono": "1000", "meses_bono": 12, "meses_promo": 6, "cloud_count": 6}
     },
     "1 PLAY TELF": {
-        "NO APLICA": {"reg": 49.0, "promo": 49.0, "bono": "-", "meses_promo": 0, "cloud_count": 0}
+        "NO APLICA": {"reg": 49.0, "promo": 49.0, "bono": "-", "meses_bono": 0, "meses_promo": 0, "cloud_count": 0}
     },
     "2 PLAY I+T": {
-        "200": {"reg": 74.0, "promo": 74.0, "bono": "400", "meses_promo": 0, "cloud_count": 2},
-        "300": {"reg": 84.0, "promo": 84.0, "bono": "600", "meses_promo": 0, "cloud_count": 4},
-        "400": {"reg": 94.0, "promo": 74.0, "bono": "1000", "meses_promo": 6, "cloud_count": 5},
-        "800": {"reg": 105.0, "promo": 105.0, "bono": "1000", "meses_promo": 0, "cloud_count": 6},
-        "1000": {"reg": 150.0, "promo": 150.0, "bono": "1000", "meses_promo": 0, "cloud_count": 6}
+        "200": {"reg": 74.0, "promo": 74.0, "bono": "400", "meses_bono": 6, "meses_promo": 0, "cloud_count": 2},
+        "300": {"reg": 84.0, "promo": 84.0, "bono": "600", "meses_bono": 6, "meses_promo": 0, "cloud_count": 4},
+        "400": {"reg": 94.0, "promo": 74.0, "bono": "1000", "meses_bono": 12, "meses_promo": 6, "cloud_count": 5},
+        "800": {"reg": 105.0, "promo": 105.0, "bono": "1000", "meses_bono": 12, "meses_promo": 0, "cloud_count": 6},
+        "1000": {"reg": 150.0, "promo": 150.0, "bono": "1000", "meses_bono": 12, "meses_promo": 0, "cloud_count": 6}
     },
     "2 PLAY I+C": {
-        "200": {"reg": 150.0, "promo": 89.0, "bono": "400", "meses_promo": 6, "cloud_count": 2},
-        "300": {"reg": 160.0, "promo": 99.0, "bono": "600", "meses_promo": 6, "cloud_count": 4},
-        "400": {"reg": 170.0, "promo": 109.0, "bono": "1000", "meses_promo": 6, "cloud_count": 5},
-        "800": {"reg": 185.0, "promo": 185.0, "bono": "1000", "meses_promo": 0, "cloud_count": 6},
-        "1000": {"reg": 230.0, "promo": 230.0, "bono": "1000", "meses_promo": 0, "cloud_count": 6}
+        "200": {"reg": 150.0, "promo": 89.0, "bono": "400", "meses_bono": 6, "meses_promo": 6, "cloud_count": 2},
+        "300": {"reg": 160.0, "promo": 99.0, "bono": "600", "meses_bono": 6, "meses_promo": 6, "cloud_count": 4},
+        "400": {"reg": 170.0, "promo": 109.0, "bono": "1000", "meses_bono": 12, "meses_promo": 6, "cloud_count": 5},
+        "800": {"reg": 185.0, "promo": 185.0, "bono": "1000", "meses_bono": 12, "meses_promo": 0, "cloud_count": 6},
+        "1000": {"reg": 230.0, "promo": 230.0, "bono": "1000", "meses_bono": 12, "meses_promo": 0, "cloud_count": 6}
     },
     "3 PLAY": {
-        "200": {"reg": 155.0, "promo": 94.0, "bono": "400", "meses_promo": 6, "cloud_count": 2},
-        "300": {"reg": 165.0, "promo": 104.0, "bono": "600", "meses_promo": 6, "cloud_count": 4},
-        "400": {"reg": 175.0, "promo": 114.0, "bono": "1000", "meses_promo": 6, "cloud_count": 5},
-        "800": {"reg": 190.0, "promo": 190.0, "bono": "1000", "meses_promo": 0, "cloud_count": 6},
-        "1000": {"reg": 235.0, "promo": 164.0, "bono": "1000", "meses_promo": 6, "cloud_count": 6}
+        "200": {"reg": 155.0, "promo": 94.0, "bono": "400", "meses_bono": 6, "meses_promo": 6, "cloud_count": 2},
+        "300": {"reg": 165.0, "promo": 104.0, "bono": "600", "meses_bono": 6, "meses_promo": 6, "cloud_count": 4},
+        "400": {"reg": 175.0, "promo": 114.0, "bono": "1000", "meses_bono": 12, "meses_promo": 6, "cloud_count": 5},
+        "800": {"reg": 190.0, "promo": 190.0, "bono": "1000", "meses_bono": 12, "meses_promo": 0, "cloud_count": 6},
+        "1000": {"reg": 235.0, "promo": 164.0, "bono": "1000", "meses_bono": 12, "meses_promo": 6, "cloud_count": 6}
     }
 }
 
@@ -153,7 +149,6 @@ def obtener_servicios_cloud(cantidad):
     ]
     return lista[:cantidad]
 
-# --- GENERADOR DEL PDF NATIVO ---
 def generar_pdf_contratos_completo(datos, plan_info):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -228,7 +223,7 @@ def generar_pdf_contratos_completo(datos, plan_info):
         p_net = f"• Internet fijo con velocidad de <b>{plan_info['internet']} Mbps</b>. CLARO garantiza el 70% de la velocidad contratada."
         story.append(Paragraph(p_net, p_body))
 
-    # 1. SERVICIOS CLOUD
+    # 1. SERVICIOS CLOUD PRIMERO
     clouds = obtener_servicios_cloud(plan_info["cloud_count"])
     if clouds:
         p_cloud_tit = f"• Servicios Cloud: Recibirá {len(clouds)} herramientas digitales (servicios cloud), las cuales son:"
@@ -255,7 +250,8 @@ def generar_pdf_contratos_completo(datos, plan_info):
         story.append(Paragraph(p_wifi, p_body))
 
     if plan_info["bono"] != "-":
-        p_bono = f"• Por promoción los 12 primeros meses navegará a una velocidad de <b>{plan_info['bono']} Megabits por segundo</b>."
+        m_bono = plan_info.get("meses_bono", 12)
+        p_bono = f"• Por promoción los {m_bono} primeros meses navegará a una velocidad de <b>{plan_info['bono']} Megabits por segundo</b>."
         story.append(Paragraph(p_bono, p_body))
 
     if plan_info["meses_promo"] > 0 and plan_info["tarifa_promo"] < plan_info["tarifa_reg"]:
@@ -286,10 +282,11 @@ def generar_pdf_contratos_completo(datos, plan_info):
     story.append(Paragraph("De no devolverlos, deberá pagar una penalidad.", p_body))
     story.append(Spacer(1, 0.18 * cm))
 
+    # CORRECCIÓN LITERAL: "podrá" en lugar de "practicale"
     if clouds:
         p_reglas_cloud = (
             "Para activar el servicio Cloud es obligatorio brindar: Nombre, número, correo de la persona de contacto y correo empresarial.<br/>"
-            "• Para velocidades desde 400 Mbps, si el cliente tiene Email Empresas y Microsoft 365, debe contar con un dominio propio para cada servicio; de lo contrario, solo practicale elegir uno (son excluyentes).<br/>"
+            "• Para velocidades desde 400 Mbps, si el cliente tiene Email Empresas y Microsoft 365, debe contar con un dominio propio para cada servicio; de lo contrario, solo podrá elegir uno (son excluyentes).<br/>"
             "• Para Email Empresas, Microsoft 365 y Tienda Virtual, el cliente debe contar con dominio propio. Si no tiene uno, Claro entregará un dominio .com gratis por 12 meses.<br/>"
             "<b>Más información sobre Servicios Cloud: https://www.claro.com.pe/negocios/soluciones/cloud/</b>"[cite: 21]
         )
@@ -370,7 +367,7 @@ with col_reg3:
             "correo": "", "indicar": "SI ACEPTO", "tipo_solicitud": "Línea Nueva (Alta)",
             "num_portar": "", "operador": "MOVISTAR", "modalidad_porta": "POSTPAGO",
             "campana_sel": "REGULAR",
-            "servicio_sel": "1 PLAY", "tec_elegida": "FTTH", "internet_val": "400",
+            "servicio_sel": "1 PLAY", "tec_elegida": "FTTH", "internet_val": "200",
             "cant_mesh": 1, "cant_decos": 0
         }
         st.session_state.last_loaded_ruc = None
@@ -447,16 +444,15 @@ with col_form:
         tiene_net = fd["servicio_sel"] in ["1 PLAY", "2 PLAY I+C", "2 PLAY I+T", "3 PLAY"]
         if tiene_net:
             lista_spd = ["200", "300", "400", "800", "1000"]
-            idx_spd = lista_spd.index(fd["internet_val"]) if fd["internet_val"] in lista_spd else 2
+            idx_spd = lista_spd.index(fd["internet_val"]) if fd["internet_val"] in lista_spd else 0
             fd["internet_val"] = st.selectbox("internet (Velocidad Mbps):", lista_spd, index=idx_spd)
-            tarifa_base = CATALOGO_PRECIOS.get(fd["servicio_sel"], CATALOGO_PRECIOS["1 PLAY"]).get(fd["internet_val"], {"reg": 94.0, "promo": 74.0, "bono": "1000", "meses_promo": 6, "cloud_count": 5})
+            tarifa_base = CATALOGO_PRECIOS.get(fd["servicio_sel"], CATALOGO_PRECIOS["1 PLAY"]).get(fd["internet_val"], {"reg": 94.0, "promo": 74.0, "bono": "1000", "meses_bono": 12, "meses_promo": 6, "cloud_count": 5})
             tarifa_obj = dict(tarifa_base)
         else:
             fd["internet_val"] = "NO APLICA"
             tarifa_obj = dict(CATALOGO_PRECIOS["1 PLAY TELF"]["NO APLICA"])
             st.selectbox("internet (Velocidad Mbps):", ["NO APLICA (Solo Telefonía)"], disabled=True)
 
-        # Regla especial de Campaña PROMO 1 SOL (Solo aplica en 1 PLAY de 400 Mbps)
         if fd["campana_sel"] == "PROMO 1 SOL":
             if fd["servicio_sel"] == "1 PLAY" and fd["internet_val"] == "400":
                 tarifa_obj["promo"] = 1.00
@@ -465,9 +461,10 @@ with col_form:
                 st.warning("⚠️ La campaña PROMO 1 SOL aplica únicamente para el paquete 1 PLAY de 400 Mbps. Se aplicará la tarifa regular.")
 
         if tarifa_obj["meses_promo"] > 0 and tarifa_obj["promo"] < tarifa_obj["reg"]:
-            st.info(f"💡 **Tarifa Regular:** S/ {tarifa_obj['reg']:.2f} | **Promo:** S/ {tarifa_obj['promo']:.2f} por {tarifa_obj['meses_promo']} meses | **Bono:** {tarifa_obj['bono']} Mbps")
+            st.info(f"💡 **Tarifa Regular:** S/ {tarifa_obj['reg']:.2f} | **Promo:** S/ {tarifa_obj['promo']:.2f} por {tarifa_obj['meses_promo']} meses | **Bono:** {tarifa_obj['bono']} Mbps ({tarifa_obj.get('meses_bono', 12)} meses)")
         else:
-            st.info(f"💡 **Tarifa Mensual:** S/ {tarifa_obj['reg']:.2f}")
+            bono_txt = f" | **Bono:** {tarifa_obj['bono']} Mbps ({tarifa_obj.get('meses_bono', 12)} meses)" if tarifa_obj['bono'] != "-" else ""
+            st.info(f"💡 **Tarifa Mensual:** S/ {tarifa_obj['reg']:.2f}{bono_txt}")
 
     with st.expander("📦 7. Repetidores Wi-Fi 360 (MESH) y Decos Adicionales", expanded=True):
         col_eq1, col_eq2 = st.columns(2)
@@ -518,6 +515,7 @@ plan_info_actual = {
     "tarifa_reg": tarifa_obj["reg"],
     "tarifa_promo": tarifa_obj["promo"],
     "bono": tarifa_obj["bono"],
+    "meses_bono": tarifa_obj.get("meses_bono", 12),
     "meses_promo": tarifa_obj["meses_promo"],
     "cloud_count": tarifa_obj["cloud_count"],
     "tiene_telf": tiene_telf,
@@ -663,6 +661,11 @@ with col_preview:
             <div style="margin-top: 6px;">• Recibirá un servicio WIFI 360 sin costo que incluye {fd['cant_mesh']} equipo(s) repetidor(es) en préstamo.</div>
             """
 
+        bono_meses_val = tarifa_obj.get("meses_bono", 12)
+        bono_html = ""
+        if tarifa_obj["bono"] != "-":
+            bono_html = f"<div style='margin-top: 6px;'>• Por promoción los {bono_meses_val} primeros meses navegará a una velocidad de <b>{tarifa_obj['bono']} Megabits por segundo</b>.</div>"
+
         promo_html = ""
         if tarifa_obj["meses_promo"] > 0 and tarifa_obj["promo"] < tarifa_obj["reg"]:
             promo_html = f"""
@@ -690,6 +693,7 @@ with col_preview:
             if fd["cant_decos"] > 0:
                 equipos_prestamo_html += f"<div>• {fd['cant_decos']} Decodificadores adicionales</div>"
 
+        # CORRECCIÓN LITERAL: "podrá" en lugar de "practicale"
         html_contrato_exacto = f"""
         <!DOCTYPE html>
         <html>
@@ -792,7 +796,7 @@ with col_preview:
 
                 {telf_html}
                 {wifi_html}
-                {('<div style="margin-top: 6px;">• Por promoción los 12 primeros meses navegará a una velocidad de <b>' + str(tarifa_obj["bono"]) + ' Megabits por segundo</b>.</div>') if tarifa_obj["bono"] != "-" else ''}
+                {bono_html}
                 {promo_html}
                 <div style="margin-top: 6px; font-size: 12px; color: #555;">Perderá la promoción si solicita la baja de uno o más de los servicios contratados, realice un cambio a un plan inferior, cambio de titularidad o cambio de número.</div>
 
@@ -802,7 +806,7 @@ with col_preview:
                 {equipos_prestamo_html}
                 <div style="font-size: 12px; color: #555;">De no devolverlos, deberá pagar una penalidad.</div>
 
-                {('<div class="legal">Para activar el servicio Cloud es obligatorio brindar la siguiente información: Nombre, número, correo de la persona de contacto y correo empresarial.<br/>• Para velocidades desde 400 Mbps, si el cliente tiene Email Empresas y Microsoft 365, debe contar con un dominio propio para cada servicio; de lo contrario, solo practicale elegir uno (son excluyentes).<br/>• Para Email Empresas, Microsoft 365 y Tienda Virtual, el cliente debe contar con dominio propio. Si no tiene uno, Claro entregará un dominio .com gratis por 12 meses.<br/><b>Más información sobre Servicios Cloud: https://www.claro.com.pe/negocios/soluciones/cloud/</b></div>') if lista_cloud else ''}
+                {('<div class="legal">Para activar el servicio Cloud es obligatorio brindar la siguiente información: Nombre, número, correo de la persona de contacto y correo empresarial.<br/>• Para velocidades desde 400 Mbps, si el cliente tiene Email Empresas y Microsoft 365, debe contar con un dominio propio para cada servicio; de lo contrario, solo podrá elegir uno (son excluyentes).<br/>• Para Email Empresas, Microsoft 365 y Tienda Virtual, el cliente debe contar con dominio propio. Si no tiene uno, Claro entregará un dominio .com gratis por 12 meses.<br/><b>Más información sobre Servicios Cloud: https://www.claro.com.pe/negocios/soluciones/cloud/</b></div>') if lista_cloud else ''}
 
                 <div style="margin-top: 14px; background-color: #ffff00; padding: 6px 10px; display: inline-block; font-weight: bold; color: red;">
                     "PARA COMPLETAR EL REGISTRO DE SU SOLICITUD, POR FAVOR, DIGA: '{fd['indicar']}'".
