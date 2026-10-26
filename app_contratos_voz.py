@@ -1,11 +1,13 @@
 import io
 import json
 import os
+import re
 import tempfile
 from pathlib import Path
 from datetime import datetime
 import streamlit as st
 import streamlit.components.v1 as components
+import requests
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
@@ -19,6 +21,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+# Evitar conflicto con el traductor automático
 st.markdown(
     """
     <script>document.documentElement.setAttribute('translate', 'no');</script>
@@ -51,6 +54,68 @@ def guardar_registros(registros):
     except Exception:
         return False
 
+# --- FUNCIÓN DE BÚSQUEDA AUTOMÁTICA DE RUC (EMPRESASRUC / APIS PÚBLICAS) ---
+def consultar_sunat_empresasruc(ruc: str):
+    ruc = str(ruc).strip()
+    if len(ruc) != 11 or not ruc.isdigit():
+        return None
+
+    # 1. Búsqueda local prioritaria si existe padron_ruc.json en el repositorio
+    if os.path.exists("padron_ruc.json"):
+        try:
+            with open("padron_ruc.json", "r", encoding="utf-8") as f:
+                d_local = json.load(f)
+                if ruc in d_local:
+                    return {"razon_social": str(d_local[ruc]).strip(), "direccion": ""}
+        except Exception:
+            pass
+
+    # 2. Endpoint público de padrón SUNAT
+    try:
+        url_search = f"https://api.apis.net.pe/v1/ruc?numero={ruc}"
+        r = requests.get(url_search, headers={"User-Agent": "Mozilla/5.0"}, timeout=3.5)
+        if r.status_code == 200:
+            d = r.json()
+            rz = d.get("nombre", d.get("razonSocial", ""))
+            dir_fiscal = d.get("direccion", "")
+            distrito = d.get("distrito", "")
+            provincia = d.get("provincia", "")
+            departamento = d.get("departamento", "")
+            
+            dir_completa = dir_fiscal
+            ubigeo_txt = ", ".join([x for x in [distrito, provincia, departamento] if x])
+            if ubigeo_txt and ubigeo_txt not in dir_completa:
+                dir_completa = f"{dir_completa}, {ubigeo_txt}".strip(", ")
+
+            if rz:
+                return {"razon_social": str(rz).strip(), "direccion": str(dir_completa).strip()}
+    except Exception:
+        pass
+
+    # 3. Consulta secundaria vía empresasruc.com
+    try:
+        url_web = f"https://empresasruc.com/consulta-ruc?ruc={ruc}"
+        headers_web = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "https://empresasruc.com/consulta-ruc"
+        }
+        resp = requests.get(url_web, headers=headers_web, timeout=4)
+        if resp.status_code == 200:
+            html = resp.text
+            m_rz = re.search(r'<h[1-4][^>]*class="[^"]*nombre[^"]*"[^>]*>(.*?)</h[1-4]>', html, re.I)
+            if not m_rz:
+                m_rz = re.search(r'Resultados de Consulta RUC.*?<div[^>]*>([A-Z0-9\s\.\-&]{4,})</div>', html, re.S | re.I)
+            
+            m_dir = re.search(r'(?:Direcci[oó]n|AV\.|JR\.|CALLE)[^<]+', html, re.I)
+            rz_txt = m_rz.group(1).strip() if m_rz else ""
+            dir_txt = m_dir.group(0).strip() if m_dir else ""
+            if rz_txt:
+                return {"razon_social": rz_txt, "direccion": dir_txt}
+    except Exception:
+        pass
+
+    return None
+
 if "db_clientes" not in st.session_state:
     st.session_state.db_clientes = cargar_registros()
 
@@ -62,6 +127,7 @@ if "form_data" not in st.session_state:
         "ruc": "",
         "razon_social": "",
         "titular": "",
+        "tipo_doc": "DNI",
         "num_doc": "",
         "lugar_fecha_nac": "",
         "padres": "",
@@ -86,6 +152,7 @@ def normalizar_nombre_servicio(servicio):
         return "2 PLAY"
     return servicio
 
+# --- LOGO OFICIAL VECTORIAL CLARO EMPRESAS ---
 SVG_CLARO_EMPRESAS = """
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 65" style="height: 38px; width: auto; display: block;">
   <text x="5" y="48" font-family="'Segoe UI', Arial, sans-serif" font-size="46" font-weight="900" fill="#DA291C" letter-spacing="-1.5">Claro</text>
@@ -149,6 +216,7 @@ def obtener_servicios_cloud(cantidad):
     ]
     return lista[:cantidad]
 
+# --- GENERADOR DEL PDF NATIVO ---
 def generar_pdf_contratos_completo(datos, plan_info):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -185,7 +253,7 @@ def generar_pdf_contratos_completo(datos, plan_info):
     lineas = [
         f"<b>1) Numero de RUC:</b> {datos['ruc'] or ''}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>2) Razón Social:</b> {datos['razon_social'] or ''}",
         f"<b>1) Su nombre y apellidos completos:</b> {datos['titular'] or ''}",
-        f"<b>2) Tipo y número de documento de identidad:</b> {datos['num_doc'] or ''}",
+        f"<b>2) Tipo y número de documento de identidad:</b> {datos['doc_completo'] or ''}",
         f"<b>3) Lugar de Nacimiento Y Fecha de Nacimiento:</b> {datos['lugar_fecha_nac'] or ''}",
         f"<b>4) Nombres de sus padres:</b> {datos['padres'] or ''}",
         f"<b>5) Número de contacto:</b> {datos['contacto'] or ''}",
@@ -271,7 +339,7 @@ def generar_pdf_contratos_completo(datos, plan_info):
     if plan_info["tiene_telf"]:
         story.append(Paragraph("• 1 equipo telefónico con pantalla", p_body))
     if plan_info["tiene_net"]:
-        tipo_router_pdf = "ONT" if plan_info["tecnologia"] == "FTTH" else "EMTA"[cite: 8]
+        tipo_router_pdf = "ONT" if plan_info["tecnologia"] == "FTTH" else "EMTA"
         story.append(Paragraph(f"• 1 equipo router {tipo_router_pdf} Incluye 4 puertos Ethernet y conexión Wifi.", p_body))
     if cant_mesh > 0:
         story.append(Paragraph(f"• {cant_mesh} equipo(s) repetidor(es) Wifi 360", p_body))
@@ -282,13 +350,13 @@ def generar_pdf_contratos_completo(datos, plan_info):
     story.append(Paragraph("De no devolverlos, deberá pagar una penalidad.", p_body))
     story.append(Spacer(1, 0.18 * cm))
 
-    # CORRECCIÓN LITERAL: "podrá" en lugar de "practicale"
+    # Cláusula Cloud con corrección literal: 'solo podrá elegir uno'
     if clouds:
         p_reglas_cloud = (
             "Para activar el servicio Cloud es obligatorio brindar: Nombre, número, correo de la persona de contacto y correo empresarial.<br/>"
             "• Para velocidades desde 400 Mbps, si el cliente tiene Email Empresas y Microsoft 365, debe contar con un dominio propio para cada servicio; de lo contrario, solo podrá elegir uno (son excluyentes).<br/>"
             "• Para Email Empresas, Microsoft 365 y Tienda Virtual, el cliente debe contar con dominio propio. Si no tiene uno, Claro entregará un dominio .com gratis por 12 meses.<br/>"
-            "<b>Más información sobre Servicios Cloud: https://www.claro.com.pe/negocios/soluciones/cloud/</b>"[cite: 21]
+            "<b>Más información sobre Servicios Cloud: https://www.claro.com.pe/negocios/soluciones/cloud/</b>"
         )
         story.append(Paragraph(p_reglas_cloud, p_legal))
         story.append(Spacer(1, 0.2 * cm))
@@ -301,7 +369,7 @@ def generar_pdf_contratos_completo(datos, plan_info):
         "de sus datos, los cuales se registran en el banco de datos de 'Clientes' para gestionar la contratación de los servicios solicitados. "
         "CLARO podrá compartirlos con proveedores que realizan servicios por encargo, los cuales podrá conocer en la Política de Privacidad "
         "publicada en Claro.pe. Los datos brindados son necesarios para atender su solicitud, de lo contrario no podría ser atendida. "
-        "Podrá ejercer sus derechos de Acceso, Rectificación, Cancelación y Oposición al correo electrónico proteccióndedatos@claro.com.pe."[cite: 8, 19]
+        "Podrá ejercer sus derechos de Acceso, Rectificación, Cancelación y Oposición al correo electrónico proteccióndedatos@claro.com.pe."
     )
     story.append(Paragraph(p_datos_personales, p_legal))
     story.append(Spacer(1, 0.2 * cm))
@@ -362,7 +430,7 @@ with col_reg3:
             "asesor": "JHONNIER VARELA",
             "fecha": datetime.now().strftime("%d/%m/%Y"),
             "hora": datetime.now().strftime("%I:%M %p"),
-            "ruc": "", "razon_social": "", "titular": "", "num_doc": "",
+            "ruc": "", "razon_social": "", "titular": "", "tipo_doc": "DNI", "num_doc": "",
             "lugar_fecha_nac": "", "padres": "", "contacto": "", "direccion": "",
             "correo": "", "indicar": "SI ACEPTO", "tipo_solicitud": "Línea Nueva (Alta)",
             "num_portar": "", "operador": "MOVISTAR", "modalidad_porta": "POSTPAGO",
@@ -390,13 +458,42 @@ with col_form:
         with c_f2:
             fd["hora"] = st.text_input("Hora:", value=fd["hora"])
 
-    with st.expander("🏢 2. Datos de la Empresa y RUC", expanded=True):
-        fd["ruc"] = st.text_input("Número de RUC:", value=fd["ruc"], placeholder="Ej. 20601816254", max_chars=11)
+    with st.expander("🏢 2. Datos de la Empresa y Búsqueda SUNAT", expanded=True):
+        col_ruc_input, col_ruc_btn = st.columns([2.5, 1.2])
+        with col_ruc_input:
+            input_ruc_nuevo = st.text_input("Número de RUC:", value=fd["ruc"], placeholder="Ej. 20601816254", max_chars=11)
+        with col_ruc_btn:
+            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+            buscar_ruc_btn = st.button("🔍 Buscar SUNAT", use_container_width=True)
+
+        if buscar_ruc_btn or (len(input_ruc_nuevo.strip()) == 11 and input_ruc_nuevo.strip() != fd["ruc"]):
+            fd["ruc"] = input_ruc_nuevo.strip()
+            with st.spinner("Buscando en SUNAT / EmpresasRUC..."):
+                datos_sunat = consultar_sunat_empresasruc(fd["ruc"])
+            if datos_sunat and datos_sunat.get("razon_social"):
+                fd["razon_social"] = datos_sunat["razon_social"]
+                if datos_sunat.get("direccion") and not fd.get("direccion"):
+                    fd["direccion"] = datos_sunat["direccion"]
+                st.success(f"✅ Encontrado: {datos_sunat['razon_social']}")
+                st.rerun()
+            elif buscar_ruc_btn:
+                st.info("ℹ️ No se obtuvo respuesta automática del padrón. Puedes ingresar la Razón Social abajo.")
+
+        fd["ruc"] = input_ruc_nuevo
         fd["razon_social"] = st.text_input("Razón Social:", value=fd["razon_social"], placeholder="Ej. RINCONCITO PUNTO Y SABOR S.A.C.")
 
     with st.expander("👤 3. Datos del Titular y Preguntas de Seguridad", expanded=True):
         fd["titular"] = st.text_input("Su nombre y apellidos completos:", value=fd["titular"], placeholder="Ej. WADNER MATEO FLORES CANTARO")
-        fd["num_doc"] = st.text_input("Tipo y número de documento de identidad:", value=fd["num_doc"], placeholder="Ej. 09353910")
+        
+        col_tdoc, col_ndoc = st.columns([1, 1.4])
+        tipos_doc_lista = ["DNI", "Carnet de Extranjería (CE)", "Pasaporte", "RUC 10"]
+        tipo_actual = fd.get("tipo_doc", "DNI")
+        idx_tdoc = tipos_doc_lista.index(tipo_actual) if tipo_actual in tipos_doc_lista else 0
+        with col_tdoc:
+            fd["tipo_doc"] = st.selectbox("Tipo de documento:", tipos_doc_lista, index=idx_tdoc)
+        with col_ndoc:
+            fd["num_doc"] = st.text_input("Número de documento:", value=fd.get("num_doc", ""), placeholder="Ej. 09353910")
+
         lfn_val = fd.get("lugar_fecha_nac", "").replace('"', '')
         fd["lugar_fecha_nac"] = st.text_input("Lugar y Fecha de Nacimiento:", value=lfn_val, placeholder="Ej. JUNIN - HUANCAYO 18/05/1967")
         fd["padres"] = st.text_input("Nombres de sus padres:", value=fd["padres"], placeholder="Ej. JUSTINA y BONIFACIO")
@@ -491,6 +588,13 @@ with col_form:
 tiene_telf = fd["servicio_sel"] in ["1 PLAY TELF", "2 PLAY I+T", "3 PLAY"]
 tiene_tv = fd["servicio_sel"] in ["2 PLAY I+C", "3 PLAY"]
 
+doc_tipo_sel = fd.get("tipo_doc", "DNI")
+doc_num_ingresado = fd.get("num_doc", "").strip()
+if doc_num_ingresado:
+    doc_completo_texto = f"{doc_tipo_sel}: {doc_num_ingresado}"
+else:
+    doc_completo_texto = ""
+
 datos_actuales = {
     "asesor": fd["asesor"],
     "fecha": fd["fecha"],
@@ -498,7 +602,9 @@ datos_actuales = {
     "ruc": fd["ruc"],
     "razon_social": fd["razon_social"],
     "titular": fd["titular"],
-    "num_doc": fd["num_doc"],
+    "tipo_doc": doc_tipo_sel,
+    "num_doc": doc_num_ingresado,
+    "doc_completo": doc_completo_texto,
     "lugar_fecha_nac": fd["lugar_fecha_nac"],
     "padres": fd["padres"],
     "contacto": fd["contacto"],
@@ -596,7 +702,7 @@ with col_preview:
                     <b>1) Su nombre y apellidos completos:</b> {fd['titular'] or ''}
                 </div>
                 <div class="linea-val">
-                    <b>2) Tipo y número de documento de identidad:</b> {fd['num_doc'] or ''}
+                    <b>2) Tipo y número de documento de identidad:</b> {doc_completo_texto}
                 </div>
                 <div class="linea-val">
                     <b>3) Lugar de Nacimiento Y Fecha de Nacimiento:</b> {fd['lugar_fecha_nac'] or ''}
@@ -647,7 +753,6 @@ with col_preview:
             <div style="margin-top: 6px;">• Telefonía fija con 5000 minutos para llamar a destinos nacionales fijo y móvil 100 minutos para fijos de: E.E.U.U.(incluido Alaska y Hawái), México, Puerto Rico y Canadá.</div>
             """
 
-        # CLARO TV DESPUÉS DE LOS SERVICIOS CLOUD
         tv_canales_html = ""
         if tiene_tv:
             if fd["tec_elegida"] == "FTTH":
@@ -693,7 +798,6 @@ with col_preview:
             if fd["cant_decos"] > 0:
                 equipos_prestamo_html += f"<div>• {fd['cant_decos']} Decodificadores adicionales</div>"
 
-        # CORRECCIÓN LITERAL: "podrá" en lugar de "practicale"
         html_contrato_exacto = f"""
         <!DOCTYPE html>
         <html>
@@ -767,7 +871,7 @@ with col_preview:
 
                 <div class="renglon"><b>1) Numero de RUC:</b> {fd['ruc']}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>2) Razón Social:</b> {fd['razon_social']}</div>
                 <div class="renglon"><b>1) Su nombre y apellidos completos:</b> {fd['titular']}</div>
-                <div class="renglon"><b>2) Tipo y número de documento de identidad:</b> {fd['num_doc']}</div>
+                <div class="renglon"><b>2) Tipo y número de documento de identidad:</b> {doc_completo_texto}</div>
                 <div class="renglon"><b>3) Lugar de Nacimiento Y Fecha de Nacimiento:</b> {fd['lugar_fecha_nac']}</div>
                 <div class="renglon"><b>4) Nombres de sus padres:</b> {fd['padres']}</div>
                 <div class="renglon"><b>5) Número de contacto:</b> {fd['contacto']}</div>
