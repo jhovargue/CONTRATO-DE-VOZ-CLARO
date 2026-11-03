@@ -305,7 +305,6 @@ def generar_pdf_contratos_completo(datos, plan_info):
     story.append(Paragraph("De no devolverlos, deberá pagar una penalidad.", p_body))
     story.append(Spacer(1, 0.18 * cm))
 
-    # CORRECCIÓN LITERAL: "podrá"
     if clouds:
         p_reglas_cloud = (
             "Para activar el servicio Cloud es obligatorio brindar: Nombre, número, correo de la persona de contacto y correo empresarial.<br/>"
@@ -336,7 +335,6 @@ def generar_pdf_contratos_completo(datos, plan_info):
     buffer.seek(0)
     return buffer.getvalue()
 
-# Encabezado visual
 st.markdown(
     """
     <div style="background-color: #0d0d0e; padding: 12px 20px; border-radius: 8px; color: white; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
@@ -794,6 +792,18 @@ with col_preview:
             if fd["cant_decos"] > 0:
                 equipos_prestamo_html += f"<div>• {fd['cant_decos']} Decodificadores adicionales</div>"
 
+        # Declaración limpia de la variable legal de Cloud sin saltos de línea rotos
+        texto_legal_cloud_html = ""
+        if lista_cloud:
+            texto_legal_cloud_html = """
+            <div class="legal">
+                Para activar el servicio Cloud es obligatorio brindar la siguiente información: Nombre, número, correo de la persona de contacto y correo empresarial.<br/>
+                • Para velocidades desde 400 Mbps, si el cliente tiene Email Empresas y Microsoft 365, debe contar con un dominio propio para cada servicio; de lo contrario, solo podrá elegir uno (son excluyentes).<br/>
+                • Para Email Empresas, Microsoft 365 y Tienda Virtual, el cliente debe contar con dominio propio. Si no tiene uno, Claro entregará un dominio .com gratis por 12 meses.<br/>
+                <b>Más información sobre Servicios Cloud: https://www.claro.com.pe/negocios/soluciones/cloud/</b>
+            </div>
+            """
+
         html_contrato_exacto = f"""
         <!DOCTYPE html>
         <html>
@@ -906,4 +916,38 @@ with col_preview:
                 {equipos_prestamo_html}
                 <div style="font-size: 12px; color: #555;">De no devolverlos, deberá pagar una penalidad.</div>
 
-                {('<div class="legal">Para activar el servicio Cloud es obligatorio brindar la siguiente información: Nombre, número, correo de la persona de contacto y correo empresarial.<br/>• Para velocidades desde 400 Mbps, si el cliente tiene Email Empresas y Microsoft 365, debe contar con un dominio propio para cada servicio; de lo contrario, solo podrá elegir uno (son excluyentes).<br/>• Para Email Empresas, Microsoft 365 y Tienda Virtual
+                {texto_legal_cloud_html}
+
+                <div style="margin-top: 14px; background-color: #ffff00; padding: 6px 10px; display: inline-block; font-weight: bold; color: red;">
+                    "PARA COMPLETAR EL REGISTRO DE SU SOLICITUD, POR FAVOR, DIGA: '{fd['indicar']}'".
+                </div>
+
+                <div class="legal" style="margin-top: 10px;">
+                    Le informo que CLARO, ubicado en Av. Nicolás Arriola N° 480, Santa Catalina, La Victoria, Lima, es el responsable del tratamiento de sus datos, los cuales se registran en el banco de datos de "Clientes" para gestionar la contratación de los servicios solicitados. CLARO podrá compartirlos con proveedores que realizan servicios por encargo, los cuales podrá conocer en la Política de Privacidad publicada en Claro.pe. Los datos brindados son necesarios para atender su solicitud, de lo contrario no podría ser atendida. Podrá ejercer sus derechos de Acceso, Rectificación, Cancelación y Oposición al correo electrónico proteccióndedatos@claro.com.pe.
+                </div>
+
+                <div style="margin-top: 12px; font-weight: bold;">
+                    Su código de solicitud es su número de documento de identidad
+                </div>
+                <div style="margin-top: 4px; font-weight: bold; color: #DA291C; font-size: 14px;">
+                    ¡Te damos la bienvenida A LA FAMILIA CLARO!
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        components.html(html_contrato_exacto, height=750, scrolling=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    pdf_bytes = generar_pdf_contratos_completo(datos_actuales, plan_info_actual)
+    nombre_archivo = f"Contrato_Voz_{fd['ruc'] if fd['ruc'].strip() else 'Borrador'}.pdf"
+
+    st.download_button(
+        label="📥 Descargar Contrato de Voz en PDF (Formato Oficial Completo)",
+        data=pdf_bytes,
+        file_name=nombre_archivo,
+        mime="application/pdf",
+        type="primary",
+        use_container_width=True
+    )
