@@ -52,7 +52,6 @@ def guardar_registros(registros):
     except Exception:
         return False
 
-# Consulta automática de RUC
 def consultar_sunat_online(ruc: str):
     ruc = ruc.strip()
     if len(ruc) != 11 or not ruc.isdigit():
@@ -164,7 +163,6 @@ CATALOGO_PRECIOS = {
     }
 }
 
-# ORDEN CORREGIDO: Seguridad Empresas en 2.° puesto
 def obtener_servicios_cloud(cantidad):
     lista = [
         "1. Claro Drive Negocio: 100 GB",
@@ -307,6 +305,7 @@ def generar_pdf_contratos_completo(datos, plan_info):
     story.append(Paragraph("De no devolverlos, deberá pagar una penalidad.", p_body))
     story.append(Spacer(1, 0.18 * cm))
 
+    # CORRECCIÓN LITERAL: "podrá"
     if clouds:
         p_reglas_cloud = (
             "Para activar el servicio Cloud es obligatorio brindar: Nombre, número, correo de la persona de contacto y correo empresarial.<br/>"
@@ -348,7 +347,6 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# GESTIÓN Y PERSISTENCIA DE REGISTROS (OPCIÓN 3 INTEGRADA)
 st.markdown("### 🗂️ Registro y Consulta de Clientes Guardados")
 col_reg1, col_reg2, col_reg3, col_reg4 = st.columns([2.2, 1, 1, 1.2])
 
@@ -399,7 +397,6 @@ with col_reg3:
 
 with col_reg4:
     st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-    # Descargar copia de seguridad
     json_backup = json.dumps(st.session_state.db_clientes, ensure_ascii=False, indent=2)
     st.download_button(
         label="📥 Descargar Backup",
@@ -410,19 +407,41 @@ with col_reg4:
     )
 
 with st.expander("📤 Restaurar clientes desde archivo JSON de respaldo"):
-    archivo_subido = st.file_uploader("Sube tu archivo clientes_claro_backup.json:", type=["json"])
-    if archivo_subido is not None:
-        try:
-            datos_importados = json.load(archivo_subido)
-            if isinstance(datos_importados, dict):
-                st.session_state.db_clientes.update(datos_importados)
-                guardar_registros(st.session_state.db_clientes)
-                st.success(f"¡{len(datos_importados)} clientes restaurados exitosamente!")
-                st.rerun()
+    tab_archivo, tab_pegar = st.tabs(["📁 Subir archivo", "📋 Pegar texto JSON"])
+    
+    with tab_archivo:
+        archivo_subido = st.file_uploader("Sube tu archivo clientes_claro_backup.json:", type=["json"])
+        if archivo_subido is not None:
+            try:
+                datos_importados = json.load(archivo_subido)
+                if isinstance(datos_importados, dict):
+                    st.session_state.db_clientes.update(datos_importados)
+                    guardar_registros(st.session_state.db_clientes)
+                    st.success(f"¡{len(datos_importados)} clientes restaurados exitosamente!")
+                    st.rerun()
+                else:
+                    st.error("El archivo no tiene el formato de diccionario esperado.")
+            except Exception as e:
+                st.error(f"Error al leer el archivo: {e}")
+                
+    with tab_pegar:
+        st.caption("Si tu navegador bloquea el cargador de archivos, pega aquí el contenido copiado de tu archivo JSON:")
+        texto_json = st.text_area("Contenido JSON:", height=100, placeholder='{"20552912170": { ... }}')
+        if st.button("Restaurar desde texto pegado", use_container_width=True):
+            if texto_json.strip():
+                try:
+                    datos_pegados = json.loads(texto_json)
+                    if isinstance(datos_pegados, dict):
+                        st.session_state.db_clientes.update(datos_pegados)
+                        guardar_registros(st.session_state.db_clientes)
+                        st.success(f"¡{len(datos_pegados)} clientes restaurados exitosamente!")
+                        st.rerun()
+                    else:
+                        st.error("El texto ingresado no es un diccionario JSON válido.")
+                except Exception as e:
+                    st.error(f"Error al parsear el texto JSON: {e}")
             else:
-                st.error("El archivo no tiene el formato de diccionario esperado.")
-        except Exception as e:
-            st.error(f"Error al leer el archivo: {e}")
+                st.warning("Pega el texto de tu respaldo primero.")
 
 st.markdown("---")
 
@@ -523,7 +542,7 @@ with col_form:
             lista_spd = ["200", "300", "400", "800", "1000"]
             idx_spd = lista_spd.index(fd["internet_val"]) if fd["internet_val"] in lista_spd else 0
             fd["internet_val"] = st.selectbox("internet (Velocidad Mbps):", lista_spd, index=idx_spd)
-            tarifa_base = CATALOGO_PRECIOS.get(fd["servicio_sel"], CATALOGO_PRECIOS["1 PLAY"]).get(fd["internet_val"], {"reg": 94.0, "promo": 74.0, "bono": "1000", "meses_bono": 12, "meses_promo": 6, "cloud_count": 5})
+            tarifa_base = CATALOGO_PRECIOS.get(fd["servicio_sel"], CATALOGO_PRECIOS["1 PLAY"]).get(fd["internet_val"], {"reg": 69.0, "promo": 69.0, "bono": "400", "meses_bono": 6, "meses_promo": 0, "cloud_count": 2})
             tarifa_obj = dict(tarifa_base)
         else:
             fd["internet_val"] = "NO APLICA"
@@ -555,7 +574,6 @@ with col_form:
                 fd["cant_decos"] = 0
                 st.selectbox("Decos TV Adicionales:", ["NO APLICA (Sin TV)"], disabled=True)
 
-    # BOTÓN PARA GUARDAR / ACTUALIZAR EL CLIENTE
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("💾 Guardar / Actualizar Datos del Cliente", type="primary", use_container_width=True):
         if not fd["ruc"].strip():
@@ -571,10 +589,7 @@ tiene_tv = fd["servicio_sel"] in ["2 PLAY I+C", "3 PLAY"]
 
 doc_tipo_sel = fd.get("tipo_doc", "DNI")
 doc_num_ingresado = fd.get("num_doc", "").strip()
-if doc_num_ingresado:
-    doc_completo_texto = f"{doc_tipo_sel}: {doc_num_ingresado}"
-else:
-    doc_completo_texto = ""
+doc_completo_texto = f"{doc_tipo_sel}: {doc_num_ingresado}" if doc_num_ingresado else ""
 
 datos_actuales = {
     "asesor": fd["asesor"],
@@ -891,38 +906,4 @@ with col_preview:
                 {equipos_prestamo_html}
                 <div style="font-size: 12px; color: #555;">De no devolverlos, deberá pagar una penalidad.</div>
 
-                {('<div class="legal">Para activar el servicio Cloud es obligatorio brindar la siguiente información: Nombre, número, correo de la persona de contacto y correo empresarial.<br/>• Para velocidades desde 400 Mbps, si el cliente tiene Email Empresas y Microsoft 365, debe contar con un dominio propio para cada servicio; de lo contrario, solo practicale elegir uno (son excluyentes).<br/>• Para Email Empresas, Microsoft 365 y Tienda Virtual, el cliente debe contar con dominio propio. Si no tiene uno, Claro entregará un dominio .com gratis por 12 meses.<br/><b>Más información sobre Servicios Cloud: https://www.claro.com.pe/negocios/soluciones/cloud/</b></div>') if lista_cloud else ''}
-
-                <div style="margin-top: 14px; background-color: #ffff00; padding: 6px 10px; display: inline-block; font-weight: bold; color: red;">
-                    "PARA COMPLETAR EL REGISTRO DE SU SOLICITUD, POR FAVOR, DIGA: '{fd['indicar']}'".
-                </div>
-
-                <div class="legal" style="margin-top: 10px;">
-                    Le informo que CLARO, ubicado en Av. Nicolás Arriola N° 480, Santa Catalina, La Victoria, Lima, es el responsable del tratamiento de sus datos, los cuales se registran en el banco de datos de "Clientes" para gestionar la contratación de los servicios solicitados. CLARO podrá compartirlos con proveedores que realizan servicios por encargo, los cuales podrá conocer en la Política de Privacidad publicada en Claro.pe. Los datos brindados son necesarios para atender su solicitud, de lo contrario no podría ser atendida. Podrá ejercer sus derechos de Acceso, Rectificación, Cancelación y Oposición al correo electrónico proteccióndedatos@claro.com.pe.
-                </div>
-
-                <div style="margin-top: 12px; font-weight: bold;">
-                    Su código de solicitud es su número de documento de identidad
-                </div>
-                <div style="margin-top: 4px; font-weight: bold; color: #DA291C; font-size: 14px;">
-                    ¡Te damos la bienvenida A LA FAMILIA CLARO!
-                </div>
-            </div>
-        </body>
-        </html>
-        """
-        components.html(html_contrato_exacto, height=750, scrolling=True)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    pdf_bytes = generar_pdf_contratos_completo(datos_actuales, plan_info_actual)
-    nombre_archivo = f"Contrato_Voz_{fd['ruc'] if fd['ruc'].strip() else 'Borrador'}.pdf"
-
-    st.download_button(
-        label="📥 Descargar Contrato de Voz en PDF (Formato Oficial Completo)",
-        data=pdf_bytes,
-        file_name=nombre_archivo,
-        mime="application/pdf",
-        type="primary",
-        use_container_width=True
-    )
+                {('<div class="legal">Para activar el servicio Cloud es obligatorio brindar la siguiente información: Nombre, número, correo de la persona de contacto y correo empresarial.<br/>• Para velocidades desde 400 Mbps, si el cliente tiene Email Empresas y Microsoft 365, debe contar con un dominio propio para cada servicio; de lo contrario, solo podrá elegir uno (son excluyentes).<br/>• Para Email Empresas, Microsoft 365 y Tienda Virtual
