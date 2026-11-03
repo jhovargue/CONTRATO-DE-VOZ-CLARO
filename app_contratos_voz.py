@@ -163,11 +163,18 @@ CATALOGO_PRECIOS = {
     }
 }
 
+# ORDEN CORREGIDO Y CONDICIONAL
 def obtener_servicios_cloud(cantidad):
+    if cantidad == 2:
+        return [
+            "1. Claro Drive Negocio: 100 GB",
+            "2. Seguridad Empresas: 1 Licencia Antivirus"
+        ]
+    
     lista = [
         "1. Claro Drive Negocio: 100 GB",
-        "2. Seguridad Empresas: 1 Licencia Antivirus",
-        "3. Claro Back Up: 15 GB para un equipo",
+        "2. Claro Back Up: 15 GB para un equipo",
+        "3. Seguridad Empresas: 1 Licencia Antivirus",
         "4. Email Empresas: 2 cuentas",
         "5. Tienda Virtual: Plan Comienza",
         "6. Microsoft 365: 1 Licencia Business Basic"
@@ -792,7 +799,6 @@ with col_preview:
             if fd["cant_decos"] > 0:
                 equipos_prestamo_html += f"<div>• {fd['cant_decos']} Decodificadores adicionales</div>"
 
-        # Declaración limpia de la variable legal de Cloud sin saltos de línea rotos
         texto_legal_cloud_html = ""
         if lista_cloud:
             texto_legal_cloud_html = """
