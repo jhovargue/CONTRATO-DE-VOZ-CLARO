@@ -6,11 +6,13 @@ from pathlib import Path
 from datetime import datetime
 import streamlit as st
 import streamlit.components.v1 as components
+import requests
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
+from reportlab.graphics.shapes import Drawing, Rect, String
 
 st.set_page_config(
     page_title="Formato de Contrato y Validación de Voz Claro",
@@ -50,8 +52,83 @@ def guardar_registros(registros):
     except Exception:
         return False
 
+# Consulta automática de RUC
+def consultar_sunat_online(ruc: str):
+    ruc = ruc.strip()
+    if len(ruc) != 11 or not ruc.isdigit():
+        return ""
+    if os.path.exists("padron_ruc.json"):
+        try:
+            with open("padron_ruc.json", "r", encoding="utf-8") as f:
+                data_local = json.load(f)
+                if ruc in data_local:
+                    return data_local[ruc]
+        except Exception:
+            pass
+
+    try:
+        url = f"https://api.decolecta.com/v1/ruc/{ruc}"
+        resp = requests.get(url, timeout=3)
+        if resp.status_code == 200:
+            d = resp.json()
+            return d.get("razon_social", d.get("nombre", ""))
+    except Exception:
+        pass
+    return ""
+
 if "db_clientes" not in st.session_state:
     st.session_state.db_clientes = cargar_registros()
+
+if "form_data" not in st.session_state:
+    st.session_state.form_data = {
+        "asesor": "JHONNIER VARELA",
+        "fecha": datetime.now().strftime("%d/%m/%Y"),
+        "hora": datetime.now().strftime("%I:%M %p"),
+        "ruc": "",
+        "razon_social": "",
+        "titular": "",
+        "tipo_doc": "DNI",
+        "num_doc": "",
+        "lugar_fecha_nac": "",
+        "padres": "",
+        "contacto": "",
+        "direccion": "",
+        "correo": "",
+        "indicar": "SI ACEPTO",
+        "tipo_solicitud": "Línea Nueva (Alta)",
+        "num_portar": "",
+        "operador": "MOVISTAR",
+        "modalidad_porta": "POSTPAGO",
+        "campana_sel": "REGULAR",
+        "servicio_sel": "1 PLAY",
+        "tec_elegida": "FTTH",
+        "internet_val": "200",
+        "cant_mesh": 1,
+        "cant_decos": 0
+    }
+
+def normalizar_nombre_servicio(servicio):
+    if servicio in ["2 PLAY I+C", "2 PLAY I+T"]:
+        return "2 PLAY"
+    return servicio
+
+SVG_CLARO_EMPRESAS = """
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 65" style="height: 38px; width: auto; display: block;">
+  <text x="5" y="48" font-family="'Segoe UI', Arial, sans-serif" font-size="46" font-weight="900" fill="#DA291C" letter-spacing="-1.5">Claro</text>
+  <rect x="108" y="11" width="4.5" height="13" rx="2.25" fill="#DA291C" />
+  <rect x="119" y="21" width="4.5" height="13" rx="2.25" transform="rotate(45 121.25 27.5)" fill="#DA291C" />
+  <rect x="123" y="38" width="13" height="4.5" rx="2.25" fill="#DA291C" />
+  <text x="144" y="48" font-family="'Segoe UI', Arial, sans-serif" font-size="42" font-weight="900" fill="#000000" letter-spacing="-1">empresas</text>
+</svg>
+"""
+
+def dibujar_logo_claro_empresas_pdf():
+    d = Drawing(145, 30)
+    d.add(String(2, 6, "Claro", fontName="Helvetica-Bold", fontSize=18, fillColor=colors.HexColor("#DA291C")))
+    d.add(Rect(44, 18, 2, 5.5, rx=1, ry=1, fillColor=colors.HexColor("#DA291C"), strokeColor=None))
+    d.add(Rect(48, 14, 5.5, 2, rx=1, ry=1, fillColor=colors.HexColor("#DA291C"), strokeColor=None))
+    d.add(String(58, 6, "empresas", fontName="Helvetica-Bold", fontSize=16, fillColor=colors.black))
+    return d
 
 CATALOGO_PRECIOS = {
     "1 PLAY": {
@@ -60,6 +137,9 @@ CATALOGO_PRECIOS = {
         "400": {"reg": 89.0, "promo": 69.0, "bono": "1000", "meses_bono": 12, "meses_promo": 6, "cloud_count": 5},
         "800": {"reg": 100.0, "promo": 100.0, "bono": "1000", "meses_bono": 12, "meses_promo": 0, "cloud_count": 6},
         "1000": {"reg": 145.0, "promo": 119.0, "bono": "1000", "meses_bono": 12, "meses_promo": 6, "cloud_count": 6}
+    },
+    "1 PLAY TELF": {
+        "NO APLICA": {"reg": 49.0, "promo": 49.0, "bono": "-", "meses_bono": 0, "meses_promo": 0, "cloud_count": 0}
     },
     "2 PLAY I+T": {
         "200": {"reg": 74.0, "promo": 74.0, "bono": "400", "meses_bono": 6, "meses_promo": 0, "cloud_count": 2},
@@ -84,7 +164,7 @@ CATALOGO_PRECIOS = {
     }
 }
 
-# ORDEN CORREGIDO DE SERVICIOS CLOUD
+# ORDEN CORREGIDO: Seguridad Empresas en 2.° puesto
 def obtener_servicios_cloud(cantidad):
     lista = [
         "1. Claro Drive Negocio: 100 GB",
@@ -96,7 +176,6 @@ def obtener_servicios_cloud(cantidad):
     ]
     return lista[:cantidad]
 
-# --- GENERADOR DEL PDF NATIVO ---
 def generar_pdf_contratos_completo(datos, plan_info):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -115,26 +194,25 @@ def generar_pdf_contratos_completo(datos, plan_info):
     p_bold = ParagraphStyle("PBold", fontName="Helvetica-Bold", fontSize=8.5, leading=12.5, textColor=colors.black)
     p_legal = ParagraphStyle("PLegal", fontName="Helvetica", fontSize=7.0, leading=9.5, textColor=colors.HexColor("#333333"), alignment=4)
 
-    # 1. ENCABEZADO
-    col_izq = Paragraph("<font color='#DA291C' size='18'><b>Claro empresas</b></font>", ParagraphStyle("LogoClaro", alignment=0))
+    logo_izq = dibujar_logo_claro_empresas_pdf()
     col_cen = Paragraph("CONTRATO DE VOZ<br/>PLANES FIJOS CLARO EMPRESAS", t_centro1)
-    col_der = Paragraph("<font color='#DA291C' size='14'><b>Claro</b></font>", ParagraphStyle("LogoDer", alignment=2))
 
-    t_header = Table([[col_izq, col_cen, col_der]], colWidths=[4.5 * cm, 9.0 * cm, 4.5 * cm])
-    t_header.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
+    t_header = Table([[logo_izq, col_cen]], colWidths=[6.0 * cm, 12.0 * cm])
+    t_header.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4)
+    ]))
     story.append(t_header)
     story.append(Spacer(1, 0.3 * cm))
 
-    # 2. LOCUCIÓN DE INICIO
     texto_intro = f"Yo <b>{datos['asesor'] or '________________'}</b> Asesor (a) de Claro, voy a grabar su solicitud, hoy {datos['fecha']} a las {datos['hora']}. Por favor indique lo siguiente."
     story.append(Paragraph(texto_intro, p_body))
     story.append(Spacer(1, 0.25 * cm))
 
-    # 3. LISTADO DE PREGUNTAS Y RESPUESTAS
     lineas = [
         f"<b>1) Numero de RUC:</b> {datos['ruc'] or ''}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>2) Razón Social:</b> {datos['razon_social'] or ''}",
         f"<b>1) Su nombre y apellidos completos:</b> {datos['titular'] or ''}",
-        f"<b>2) Tipo y número de documento de identidad:</b> {datos['num_doc'] or ''}",
+        f"<b>2) Tipo y número de documento de identidad:</b> {datos['doc_completo'] or ''}",
         f"<b>3) Lugar de Nacimiento Y Fecha de Nacimiento:</b> {datos['lugar_fecha_nac'] or ''}",
         f"<b>4) Nombres de sus padres:</b> {datos['padres'] or ''}",
         f"<b>5) Número de contacto:</b> {datos['contacto'] or ''}",
@@ -147,20 +225,21 @@ def generar_pdf_contratos_completo(datos, plan_info):
         story.append(Spacer(1, 0.12 * cm))
 
     if plan_info["es_portabilidad"]:
-        story.append(Spacer(1, 0.15 * cm))
-        story.append(Paragraph("<b>Por favor indique lo siguiente:</b>", p_bold))
+        story.append(Spacer(1, 0.2 * cm))
+        story.append(Paragraph("<b>Por favor indique lo siguiente:</b>", p_body))
         story.append(Paragraph(f"• Número que desea portar: <b>{plan_info['num_portar']}</b>", p_body))
         story.append(Paragraph(f"• Empresa operadora actual: <b>{plan_info['operador']}</b>", p_body))
-        story.append(Paragraph(f"• Modalidad de servicio: <b>{plan_info['modalidad_porta']}</b>", p_body))
+        story.append(Paragraph(f"Modalidad de servicio: <b>{plan_info['modalidad_porta']}</b>", p_body))
         story.append(Paragraph("La portabilidad es gratuita y demora 24 horas desde la solicitud.", p_body))
+        story.append(Spacer(1, 0.2 * cm))
+    else:
+        story.append(Spacer(1, 0.2 * cm))
 
-    story.append(Spacer(1, 0.2 * cm))
-
-    # 4. CONDICIONES COMERCIALES Y LOCUCIÓN
     nom_tec = "Fibra Óptica" if plan_info["tecnologia"] == "FTTH" else "Fibra Coaxial"
-    p1 = f"Ud, solicitó el paquete <b>{plan_info['servicio']} {nom_tec}</b> con costo mensual de <b>S/{plan_info['tarifa_reg']:.2f}</b>. La contratación y activación del paquete está sujeta a la verificación de facilidades técnicas en el domicilio indicado. Para lo cual, CLARO se contactará con Ud. al número brindado para coordinar la fecha de la visita de instalación."
+    nombre_plan_mostrar = normalizar_nombre_servicio(plan_info["servicio"])
+    p1 = f"Ud, solicitó el paquete <b>{nombre_plan_mostrar} {nom_tec}</b> con costo mensual de <b>S/{plan_info['tarifa_reg']:.2f}</b>. La contratación y activación del paquete está sujeta a la verificación de facilidades técnicas en el domicilio indicado. Para lo cual, CLARO se contactará con Ud. al número brindado para coordinar la fecha de la visita de instalación."
     story.append(Paragraph(p1, p_body))
-    story.append(Spacer(1, 0.15 * cm))
+    story.append(Spacer(1, 0.12 * cm))
 
     p_inst = "La tarifa de instalación es de <b>S/0</b>. El cual se pagará en 6 cuotas mensuales de <b>S/0</b> durante 6 meses, a partir del primer recibo. Si cancela el servicio antes de los 6 meses, deberá pagar el monto restante."
     story.append(Paragraph(p_inst, p_body))
@@ -171,7 +250,6 @@ def generar_pdf_contratos_completo(datos, plan_info):
         p_net = f"• Internet fijo con velocidad de <b>{plan_info['internet']} Mbps</b>. CLARO garantiza el 70% de la velocidad contratada."
         story.append(Paragraph(p_net, p_body))
 
-    # 1. SERVICIOS CLOUD
     clouds = obtener_servicios_cloud(plan_info["cloud_count"])
     if clouds:
         p_cloud_tit = f"• Servicios Cloud: Recibirá {len(clouds)} herramientas digitales (servicios cloud), las cuales son:"
@@ -180,14 +258,13 @@ def generar_pdf_contratos_completo(datos, plan_info):
             story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;{c}", p_body))
         story.append(Paragraph("Se comunicaran con usted para efectuar la activación del beneficio si lo requiere.", p_body))
 
-    # 2. CLARO TV (POSTERIOR A SERVICIOS CLOUD)
     if plan_info["tiene_tv"]:
-        tv_desc = "Claro TV+ Estándar Pro con 105 canales" if plan_info["tecnologia"] == "FTTH" else "Claro TV Estándar Pro con 62 canales en HD y 102 canales en Standard"
-        story.append(Paragraph(f"• {tv_desc}.", p_body))
-        if plan_info["cant_decos"] > 0:
-            story.append(Paragraph(f"• Puntos adicionales de TV por un total de S/0 al mes, adicional a su paquete, compuesto por {plan_info['cant_decos']} de Claro TV HDTV.", p_body))
+        if plan_info["tecnologia"] == "FTTH":
+            p_tv = "• <b>Claro TV+ Estándar Pro con 105 canales</b>"
+        else:
+            p_tv = "• <b>Claro TV Estándar Pro con 62 canales en HD y 102 canales en Standard</b>"
+        story.append(Paragraph(p_tv, p_body))
 
-    # 3. TELEFONÍA Y EQUIPOS ADICIONALES
     if plan_info["tiene_telf"]:
         p_telf = "• Telefonía fija con 5000 minutos para llamar a destinos nacionales fijo y móvil; 100 minutos para fijos de: EE.UU. (incluido Alaska y Hawái), México, Puerto Rico y Canadá."
         story.append(Paragraph(p_telf, p_body))
@@ -197,9 +274,9 @@ def generar_pdf_contratos_completo(datos, plan_info):
         p_wifi = f"• Recibirá un servicio WIFI 360 sin costo que incluye {cant_mesh} equipo(s) repetidor(es) en préstamo."
         story.append(Paragraph(p_wifi, p_body))
 
-    # Promoción y bonos
     if plan_info["bono"] != "-":
-        p_bono = f"• Por promoción los {plan_info['meses_bono']} primeros meses navegará a una velocidad de <b>{plan_info['bono']} Megabits por segundo</b>."
+        m_bono = plan_info.get("meses_bono", 12)
+        p_bono = f"• Por promoción los {m_bono} primeros meses navegará a una velocidad de <b>{plan_info['bono']} Megabits por segundo</b>."
         story.append(Paragraph(p_bono, p_body))
 
     if plan_info["meses_promo"] > 0 and plan_info["tarifa_promo"] < plan_info["tarifa_reg"]:
@@ -209,19 +286,24 @@ def generar_pdf_contratos_completo(datos, plan_info):
     story.append(Paragraph("Perderá la promoción si solicita la baja de uno o más de los servicios contratados, realice un cambio a un plan inferior, cambio de titularidad o cambio de número.", p_body))
     story.append(Spacer(1, 0.18 * cm))
 
-    # EQUIPOS EN PRÉSTAMO
+    cant_decos = plan_info["cant_decos"]
+    if plan_info["tiene_tv"]:
+        p_puntos_tv = f"Puntos adicionales de TV por un total de S/0 al mes, adicional a su paquete, compuesto por {cant_decos} de Claro TV HDTV"
+        story.append(Paragraph(p_puntos_tv, p_body))
+        story.append(Spacer(1, 0.18 * cm))
+
     story.append(Paragraph("<b>Ud. obtendrá equipos que serán entregados en préstamo y que deberá devolver en su totalidad al término de su contrato:</b>", p_bold))
     if plan_info["tiene_telf"]:
         story.append(Paragraph("• 1 equipo telefónico con pantalla", p_body))
     if plan_info["tiene_net"]:
         tipo_router_pdf = "ONT" if plan_info["tecnologia"] == "FTTH" else "EMTA"
-        story.append(Paragraph(f"• 1 equipo router {tipo_router_pdf} Incluye 4 puertos Ethernet y conexión Wifi", p_body))
+        story.append(Paragraph(f"• 1 equipo router {tipo_router_pdf} Incluye 4 puertos Ethernet y conexión Wifi.", p_body))
     if cant_mesh > 0:
         story.append(Paragraph(f"• {cant_mesh} equipo(s) repetidor(es) Wifi 360", p_body))
     if plan_info["tiene_tv"]:
         story.append(Paragraph("• 1 Decodificadores que se incluyen en el plan", p_body))
-        if plan_info["cant_decos"] > 0:
-            story.append(Paragraph(f"• {plan_info['cant_decos']} Decodificadores adicionales", p_body))
+        if cant_decos > 0:
+            story.append(Paragraph(f"• {cant_decos} Decodificadores adicionales", p_body))
     story.append(Paragraph("De no devolverlos, deberá pagar una penalidad.", p_body))
     story.append(Spacer(1, 0.18 * cm))
 
@@ -266,95 +348,257 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-col_form, col_preview = st.columns([1.0, 1.4], gap="medium")
+# GESTIÓN Y PERSISTENCIA DE REGISTROS (OPCIÓN 3 INTEGRADA)
+st.markdown("### 🗂️ Registro y Consulta de Clientes Guardados")
+col_reg1, col_reg2, col_reg3, col_reg4 = st.columns([2.2, 1, 1, 1.2])
 
+opciones_clientes = ["-- Nuevo Cliente (Formulario Vacío) --"] + [
+    f"{k} · {v.get('razon_social', '')}" for k, v in st.session_state.db_clientes.items()
+]
+
+with col_reg1:
+    cliente_seleccionado = st.selectbox("Seleccionar Cliente Guardado para Cargar / Modificar:", opciones_clientes)
+
+if cliente_seleccionado != "-- Nuevo Cliente (Formulario Vacío) --":
+    ruc_elegido = cliente_seleccionado.split(" · ")[0].strip()
+    if st.session_state.get("last_loaded_ruc") != ruc_elegido:
+        datos_guardados = st.session_state.db_clientes[ruc_elegido]
+        st.session_state.form_data.update(datos_guardados)
+        st.session_state.last_loaded_ruc = ruc_elegido
+        st.rerun()
+
+with col_reg2:
+    st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+    if st.button("🗑️ Eliminar Registro", use_container_width=True):
+        if cliente_seleccionado != "-- Nuevo Cliente (Formulario Vacío) --":
+            ruc_a_borrar = cliente_seleccionado.split(" · ")[0].strip()
+            if ruc_a_borrar in st.session_state.db_clientes:
+                del st.session_state.db_clientes[ruc_a_borrar]
+                guardar_registros(st.session_state.db_clientes)
+                st.session_state.last_loaded_ruc = None
+                st.success("Cliente eliminado del registro.")
+                st.rerun()
+
+with col_reg3:
+    st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+    if st.button("✨ Formulario Nuevo", use_container_width=True):
+        st.session_state.form_data = {
+            "asesor": "JHONNIER VARELA",
+            "fecha": datetime.now().strftime("%d/%m/%Y"),
+            "hora": datetime.now().strftime("%I:%M %p"),
+            "ruc": "", "razon_social": "", "titular": "", "tipo_doc": "DNI", "num_doc": "",
+            "lugar_fecha_nac": "", "padres": "", "contacto": "", "direccion": "",
+            "correo": "", "indicar": "SI ACEPTO", "tipo_solicitud": "Línea Nueva (Alta)",
+            "num_portar": "", "operador": "MOVISTAR", "modalidad_porta": "POSTPAGO",
+            "campana_sel": "REGULAR",
+            "servicio_sel": "1 PLAY", "tec_elegida": "FTTH", "internet_val": "200",
+            "cant_mesh": 1, "cant_decos": 0
+        }
+        st.session_state.last_loaded_ruc = None
+        st.rerun()
+
+with col_reg4:
+    st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+    # Descargar copia de seguridad
+    json_backup = json.dumps(st.session_state.db_clientes, ensure_ascii=False, indent=2)
+    st.download_button(
+        label="📥 Descargar Backup",
+        data=json_backup,
+        file_name="clientes_claro_backup.json",
+        mime="application/json",
+        use_container_width=True
+    )
+
+with st.expander("📤 Restaurar clientes desde archivo JSON de respaldo"):
+    archivo_subido = st.file_uploader("Sube tu archivo clientes_claro_backup.json:", type=["json"])
+    if archivo_subido is not None:
+        try:
+            datos_importados = json.load(archivo_subido)
+            if isinstance(datos_importados, dict):
+                st.session_state.db_clientes.update(datos_importados)
+                guardar_registros(st.session_state.db_clientes)
+                st.success(f"¡{len(datos_importados)} clientes restaurados exitosamente!")
+                st.rerun()
+            else:
+                st.error("El archivo no tiene el formato de diccionario esperado.")
+        except Exception as e:
+            st.error(f"Error al leer el archivo: {e}")
+
+st.markdown("---")
+
+col_form, col_preview = st.columns([1.05, 1.35], gap="medium")
+fd = st.session_state.form_data
+
+# --- COLUMNA 1: FORMULARIO ---
 with col_form:
-    st.markdown("#### 📝 Llenar Datos de la Locución")
+    st.markdown("#### 📝 Llenar / Modificar Datos")
 
     with st.expander("🎙️ 1. Datos del Asesor y Grabación", expanded=True):
-        asesor = st.text_input("Nombre del Asesor (a):", value="JHONNIER VARELA")
+        fd["asesor"] = st.text_input("Nombre del Asesor (a):", value=fd["asesor"])
         c_f1, c_f2 = st.columns(2)
         with c_f1:
-            fecha_input = st.text_input("Fecha:", value=datetime.now().strftime("%d/%m/%Y"))
+            fd["fecha"] = st.text_input("Fecha:", value=fd["fecha"])
         with c_f2:
-            hora_input = st.text_input("Hora:", value=datetime.now().strftime("%I:%M %p"))
+            fd["hora"] = st.text_input("Hora:", value=fd["hora"])
 
     with st.expander("🏢 2. Datos de la Empresa y RUC", expanded=True):
-        ruc = st.text_input("Número de RUC:", value="20552912170", max_chars=11)
-        razon_social = st.text_input("Razón Social:", value="GIOVALESSA E.I.R.L")
+        col_ruc_input, col_ruc_btn = st.columns([2.5, 1.2])
+        with col_ruc_input:
+            input_ruc_nuevo = st.text_input("Número de RUC:", value=fd["ruc"], placeholder="Ej. 20601816254", max_chars=11)
+        with col_ruc_btn:
+            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+            buscar_ruc_btn = st.button("🔍 Buscar SUNAT", use_container_width=True)
+
+        if buscar_ruc_btn or (len(input_ruc_nuevo.strip()) == 11 and input_ruc_nuevo.strip() != fd["ruc"]):
+            fd["ruc"] = input_ruc_nuevo.strip()
+            rz_encontrada = consultar_sunat_online(fd["ruc"])
+            if rz_encontrada:
+                fd["razon_social"] = rz_encontrada
+                st.success(f"Encontrado: {rz_encontrada}")
+                st.rerun()
+            elif buscar_ruc_btn:
+                st.info("No se encontró automáticamente. Puedes escribir la Razón Social abajo.")
+
+        fd["ruc"] = input_ruc_nuevo
+        fd["razon_social"] = st.text_input("Razón Social:", value=fd["razon_social"], placeholder="Ej. RINCONCITO PUNTO Y SABOR S.A.C.")
 
     with st.expander("👤 3. Datos del Titular y Preguntas de Seguridad", expanded=True):
-        titular = st.text_input("Su nombre y apellidos completos:", value="ARROYO ARELLANO GIOVANNA JACQUELINE")
-        num_doc = st.text_input("Tipo y número de documento de identidad:", value="40184683")
-        lugar_fecha_nac = st.text_input("Lugar y Fecha de Nacimiento:", value="LIMA, LIMA, LIMA 8/05/1979")
-        padres = st.text_input("Nombres de sus padres:", value="JULIO Y IRMA")
-        contacto = st.text_input("Número de contacto:", value="954 140 009")
+        fd["titular"] = st.text_input("Su nombre y apellidos completos:", value=fd["titular"], placeholder="Ej. WADNER MATEO FLORES CANTARO")
+        
+        col_tdoc, col_ndoc = st.columns([1, 1.4])
+        tipos_doc_lista = ["DNI", "Carnet de Extranjería (CE)", "Pasaporte", "RUC 10"]
+        tipo_actual = fd.get("tipo_doc", "DNI")
+        idx_tdoc = tipos_doc_lista.index(tipo_actual) if tipo_actual in tipos_doc_lista else 0
+        with col_tdoc:
+            fd["tipo_doc"] = st.selectbox("Tipo de documento:", tipos_doc_lista, index=idx_tdoc)
+        with col_ndoc:
+            fd["num_doc"] = st.text_input("Número de documento:", value=fd.get("num_doc", ""), placeholder="Ej. 09353910")
+
+        lfn_val = fd.get("lugar_fecha_nac", "").replace('"', '')
+        fd["lugar_fecha_nac"] = st.text_input("Lugar y Fecha de Nacimiento:", value=lfn_val, placeholder="Ej. JUNIN - HUANCAYO 18/05/1967")
+        fd["padres"] = st.text_input("Nombres de sus padres:", value=fd["padres"], placeholder="Ej. JUSTINA y BONIFACIO")
+        fd["contacto"] = st.text_input("Número de contacto:", value=fd["contacto"], placeholder="Ej. 993083718", max_chars=9)
 
     with st.expander("📍 4. Dirección, Facturación y Conformidad", expanded=True):
-        direccion = st.text_area(
-            "Dirección de instalación y facturación:",
-            value="Av De la Marina 1222 MZ V Urb los Cerezos, LA PERLA, CALLAO",
-            height=60
-        )
-        correo = st.text_input("Correo electrónico:", value="LUVAVI162@HOTMAIL.COM")
-        indicar = st.selectbox("INDICAR CONFORMIDAD:", ["SI ACEPTO", "NO ACEPTO"], index=0)
+        fd["direccion"] = st.text_area("Dirección de instalación y facturación:", value=fd["direccion"], placeholder="Ej. CALLE FRANCISCO LAZO NRO. 2055 LINCE", height=60)
+        fd["correo"] = st.text_input("Correo electrónico:", value=fd["correo"], placeholder="Ej. contacto@empresa.com")
+        idx_ind = 0 if fd["indicar"] == "SI ACEPTO" else 1
+        fd["indicar"] = st.selectbox("INDICAR CONFORMIDAD:", ["SI ACEPTO", "NO ACEPTO"], index=idx_ind)
 
-    with st.expander("📞 5. Tipo de Solicitud (Línea o Portabilidad)", expanded=False):
-        tipo_solicitud = st.selectbox("Tipo de Solicitud:", ["Línea Nueva (Alta)", "Portabilidad"], index=0)
-        num_portar = ""
-        operador = ""
-        modalidad_porta = ""
-        if tipo_solicitud == "Portabilidad":
-            num_portar = st.text_input("Número a portar:")
-            operador = st.selectbox("Operador donante:", ["MOVISTAR", "ENTEL", "BITEL", "OTRO"], index=0)
-            modalidad_porta = st.selectbox("Modalidad:", ["POSTPAGO", "PREPAGO"], index=0)
+    with st.expander("📞 5. Modalidad de Instalación (Alta o Portabilidad)", expanded=True):
+        idx_tsol = 0 if fd["tipo_solicitud"] == "Línea Nueva (Alta)" else 1
+        fd["tipo_solicitud"] = st.radio("Tipo de Solicitud:", ["Línea Nueva (Alta)", "Portabilidad"], index=idx_tsol, horizontal=True)
 
-    with st.expander("🌐 6. Paquete, Tecnología y Tarifas", expanded=True):
-        servicio_sel = st.selectbox("SERVICIO:", ["1 PLAY", "1 PLAY TELF", "2 PLAY I+C", "2 PLAY I+T", "3 PLAY"], index=0)
-        tec_elegida = st.selectbox("Tecnología:", ["FTTH", "HFC"], index=0)
-        internet_val = st.selectbox("internet (Velocidad Mbps):", ["200", "300", "400", "800", "1000"], index=0)
+        if fd["tipo_solicitud"] == "Portabilidad":
+            col_p1, col_p2 = st.columns(2)
+            with col_p1:
+                fd["num_portar"] = st.text_input("Número que desea portar:", value=fd["num_portar"], placeholder="Ej. 12350253", max_chars=9)
+                lista_op = ["MOVISTAR", "ENTEL", "BITEL"]
+                idx_op = lista_op.index(fd["operador"]) if fd["operador"] in lista_op else 0
+                fd["operador"] = st.selectbox("Empresa operadora actual:", lista_op, index=idx_op)
+            with col_p2:
+                lista_mod = ["POSTPAGO", "CONTROL", "PREPAGO"]
+                idx_mod = lista_mod.index(fd["modalidad_porta"]) if fd["modalidad_porta"] in lista_mod else 0
+                fd["modalidad_porta"] = st.selectbox("Modalidad de servicio:", lista_mod, index=idx_mod)
+        else:
+            fd["num_portar"] = ""
+            fd["operador"] = ""
+            fd["modalidad_porta"] = ""
 
-        tarifa_obj = CATALOGO_PRECIOS.get(servicio_sel, CATALOGO_PRECIOS["1 PLAY"]).get(
-            internet_val,
-            {"reg": 69.0, "promo": 69.0, "bono": "400", "meses_bono": 6, "meses_promo": 0, "cloud_count": 2}
-        )
-        st.info(f"💡 **Tarifa Regular:** S/ {tarifa_obj['reg']:.2f} | **Promo:** S/ {tarifa_obj['promo']:.2f} por {tarifa_obj['meses_promo']} meses | **Bono:** {tarifa_obj['bono']} Mbps")
+    with st.expander("🌐 6. Campaña, Paquete, Tecnología y Tarifas", expanded=True):
+        lista_camp = ["REGULAR", "PROMO 1 SOL"]
+        idx_camp = lista_camp.index(fd.get("campana_sel", "REGULAR")) if fd.get("campana_sel", "REGULAR") in lista_camp else 0
+        fd["campana_sel"] = st.selectbox("Campaña:", lista_camp, index=idx_camp)
+
+        lista_serv = ["1 PLAY", "1 PLAY TELF", "2 PLAY I+C", "2 PLAY I+T", "3 PLAY"]
+        idx_serv = lista_serv.index(fd["servicio_sel"]) if fd["servicio_sel"] in lista_serv else 0
+        fd["servicio_sel"] = st.selectbox("SERVICIO:", lista_serv, index=idx_serv)
+
+        lista_tec = ["FTTH", "HFC"]
+        idx_tec = lista_tec.index(fd["tec_elegida"]) if fd["tec_elegida"] in lista_tec else 0
+        fd["tec_elegida"] = st.selectbox("Tecnología:", lista_tec, index=idx_tec)
+
+        tiene_net = fd["servicio_sel"] in ["1 PLAY", "2 PLAY I+C", "2 PLAY I+T", "3 PLAY"]
+        if tiene_net:
+            lista_spd = ["200", "300", "400", "800", "1000"]
+            idx_spd = lista_spd.index(fd["internet_val"]) if fd["internet_val"] in lista_spd else 0
+            fd["internet_val"] = st.selectbox("internet (Velocidad Mbps):", lista_spd, index=idx_spd)
+            tarifa_base = CATALOGO_PRECIOS.get(fd["servicio_sel"], CATALOGO_PRECIOS["1 PLAY"]).get(fd["internet_val"], {"reg": 94.0, "promo": 74.0, "bono": "1000", "meses_bono": 12, "meses_promo": 6, "cloud_count": 5})
+            tarifa_obj = dict(tarifa_base)
+        else:
+            fd["internet_val"] = "NO APLICA"
+            tarifa_obj = dict(CATALOGO_PRECIOS["1 PLAY TELF"]["NO APLICA"])
+            st.selectbox("internet (Velocidad Mbps):", ["NO APLICA (Solo Telefonía)"], disabled=True)
+
+        if fd["campana_sel"] == "PROMO 1 SOL":
+            if fd["servicio_sel"] == "1 PLAY" and fd["internet_val"] == "400":
+                tarifa_obj["promo"] = 1.00
+                tarifa_obj["meses_promo"] = 2
+            else:
+                st.warning("⚠️ La campaña PROMO 1 SOL aplica únicamente para el paquete 1 PLAY de 400 Mbps. Se aplicará la tarifa regular.")
+
+        if tarifa_obj["meses_promo"] > 0 and tarifa_obj["promo"] < tarifa_obj["reg"]:
+            st.info(f"💡 **Tarifa Regular:** S/ {tarifa_obj['reg']:.2f} | **Promo:** S/ {tarifa_obj['promo']:.2f} por {tarifa_obj['meses_promo']} meses | **Bono:** {tarifa_obj['bono']} Mbps ({tarifa_obj.get('meses_bono', 12)} meses)")
+        else:
+            bono_txt = f" | **Bono:** {tarifa_obj['bono']} Mbps ({tarifa_obj.get('meses_bono', 12)} meses)" if tarifa_obj['bono'] != "-" else ""
+            st.info(f"💡 **Tarifa Mensual:** S/ {tarifa_obj['reg']:.2f}{bono_txt}")
 
     with st.expander("📦 7. Repetidores Wi-Fi 360 (MESH) y Decos Adicionales", expanded=True):
         col_eq1, col_eq2 = st.columns(2)
         with col_eq1:
-            cant_mesh = st.number_input("Cantidad de Repetidores MESH:", min_value=0, max_value=5, value=1, step=1)
+            fd["cant_mesh"] = st.number_input("Cantidad de Repetidores MESH:", min_value=0, max_value=5, value=fd["cant_mesh"], step=1)
         with col_eq2:
-            tiene_tv = servicio_sel in ["2 PLAY I+C", "3 PLAY"]
+            tiene_tv = fd["servicio_sel"] in ["2 PLAY I+C", "3 PLAY"]
             if tiene_tv:
-                cant_decos = st.number_input("Decodificadores TV Adicionales:", min_value=0, max_value=4, value=0, step=1)
+                fd["cant_decos"] = st.number_input("Decodificadores TV Adicionales:", min_value=0, max_value=4, value=fd["cant_decos"], step=1)
             else:
-                cant_decos = 0
+                fd["cant_decos"] = 0
                 st.selectbox("Decos TV Adicionales:", ["NO APLICA (Sin TV)"], disabled=True)
 
-tiene_telf = servicio_sel in ["1 PLAY TELF", "2 PLAY I+T", "3 PLAY"]
-tiene_net = servicio_sel != "1 PLAY TELF"
+    # BOTÓN PARA GUARDAR / ACTUALIZAR EL CLIENTE
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("💾 Guardar / Actualizar Datos del Cliente", type="primary", use_container_width=True):
+        if not fd["ruc"].strip():
+            st.warning("Ingresa un número de RUC para guardar el cliente.")
+        else:
+            st.session_state.db_clientes[fd["ruc"].strip()] = dict(fd)
+            guardar_registros(st.session_state.db_clientes)
+            st.success(f"¡Registro guardado exitosamente para {fd['ruc']} - {fd['razon_social']}!")
+            st.rerun()
+
+tiene_telf = fd["servicio_sel"] in ["1 PLAY TELF", "2 PLAY I+T", "3 PLAY"]
+tiene_tv = fd["servicio_sel"] in ["2 PLAY I+C", "3 PLAY"]
+
+doc_tipo_sel = fd.get("tipo_doc", "DNI")
+doc_num_ingresado = fd.get("num_doc", "").strip()
+if doc_num_ingresado:
+    doc_completo_texto = f"{doc_tipo_sel}: {doc_num_ingresado}"
+else:
+    doc_completo_texto = ""
 
 datos_actuales = {
-    "asesor": asesor,
-    "fecha": fecha_input,
-    "hora": hora_input,
-    "ruc": ruc,
-    "razon_social": razon_social,
-    "titular": titular,
-    "num_doc": num_doc,
-    "lugar_fecha_nac": lugar_fecha_nac,
-    "padres": padres,
-    "contacto": contacto,
-    "direccion": direccion,
-    "correo": correo,
-    "indicar": indicar
+    "asesor": fd["asesor"],
+    "fecha": fd["fecha"],
+    "hora": fd["hora"],
+    "ruc": fd["ruc"],
+    "razon_social": fd["razon_social"],
+    "titular": fd["titular"],
+    "tipo_doc": doc_tipo_sel,
+    "num_doc": doc_num_ingresado,
+    "doc_completo": doc_completo_texto,
+    "lugar_fecha_nac": fd["lugar_fecha_nac"],
+    "padres": fd["padres"],
+    "contacto": fd["contacto"],
+    "direccion": fd["direccion"],
+    "correo": fd["correo"],
+    "indicar": fd["indicar"]
 }
 
 plan_info_actual = {
-    "servicio": servicio_sel,
-    "tecnologia": tec_elegida,
-    "internet": internet_val,
+    "campana": fd.get("campana_sel", "REGULAR"),
+    "servicio": fd["servicio_sel"],
+    "tecnologia": fd["tec_elegida"],
+    "internet": fd["internet_val"],
     "tarifa_reg": tarifa_obj["reg"],
     "tarifa_promo": tarifa_obj["promo"],
     "bono": tarifa_obj["bono"],
@@ -364,212 +608,315 @@ plan_info_actual = {
     "tiene_telf": tiene_telf,
     "tiene_tv": tiene_tv,
     "tiene_net": tiene_net,
-    "cant_mesh": cant_mesh,
-    "cant_decos": cant_decos,
-    "es_portabilidad": (tipo_solicitud == "Portabilidad"),
-    "num_portar": num_portar,
-    "operador": operador,
-    "modalidad_porta": modalidad_porta
+    "cant_mesh": fd["cant_mesh"],
+    "cant_decos": fd["cant_decos"],
+    "es_portabilidad": (fd["tipo_solicitud"] == "Portabilidad"),
+    "num_portar": fd["num_portar"],
+    "operador": fd["operador"],
+    "modalidad_porta": fd["modalidad_porta"]
 }
 
+# --- COLUMNA 2: SELECTOR DE VISTA Y VISUALIZACIÓN ---
 with col_preview:
-    st.markdown("#### 📄 Vista Previa Completa del Contrato de Voz")
+    st.markdown("#### 👁️ Seleccionar Vista Previa")
+    vista_seleccionada = st.radio(
+        "Modo de vista:",
+        ["📋 Validación de Datos (Puntos 1 al 7)", "📑 Contrato de Voz Completo"],
+        horizontal=True,
+        label_visibility="collapsed"
+    )
 
-    nom_tec_html = "Fibra Óptica" if tec_elegida == "FTTH" else "Fibra Coaxial"
-    lista_cloud = obtener_servicios_cloud(tarifa_obj["cloud_count"])
-    cloud_items_html = "".join([f"<div>&nbsp;&nbsp;&nbsp;&nbsp;{c}</div>" for c in lista_cloud])
-
-    portabilidad_html = ""
-    if tipo_solicitud == "Portabilidad":
-        portabilidad_html = f"""
-        <div style="margin-top: 14px; margin-bottom: 14px; padding: 10px 14px; background-color: #fcfcfc; border-left: 3px solid #DA291C;">
-            <div style="font-weight: bold; margin-bottom: 6px;">Por favor indique lo siguiente:</div>
-            <div>• Número que desea portar: <b>{num_portar or '__________'}</b></div>
-            <div>• Empresa operadora actual: <b>{operador or '__________'}</b></div>
-            <div>• Modalidad de servicio: <b>{modalidad_porta or '__________'}</b></div>
-            <div style="margin-top: 4px;">La portabilidad es gratuita y demora 24 horas desde la solicitud.</div>
-        </div>
-        """
-
-    telf_html = ""
-    if tiene_telf:
-        telf_html = """
-        <div style="margin-top: 6px;">• Telefonía fija con 5000 minutos para llamar a destinos nacionales fijo y móvil 100 minutos para fijos de: E.E.U.U.(incluido Alaska y Hawái), México, Puerto Rico y Canadá.</div>
-        """
-
-    tv_html = ""
-    if tiene_tv:
-        tv_desc_web = "Claro TV+ Estándar Pro con 105 canales" if tec_elegida == "FTTH" else "Claro TV Estándar Pro con 62 canales en HD y 102 canales en Standard"
-        tv_html = f"<div style='margin-top: 6px;'>• {tv_desc_web}.</div>"
-        if cant_decos > 0:
-            tv_html += f"<div style='margin-top: 6px;'>• Puntos adicionales de TV por un total de S/0 al mes, adicional a su paquete, compuesto por {cant_decos} de Claro TV HDTV.</div>"
-
-    wifi_html = ""
-    if cant_mesh > 0:
-        wifi_html = f"""
-        <div style="margin-top: 6px;">• Recibirá un servicio WIFI 360 sin costo que incluye {cant_mesh} equipo(s) repetidor(es) en préstamo.</div>
-        """
-
-    promo_html = ""
-    if tarifa_obj["meses_promo"] > 0 and tarifa_obj["promo"] < tarifa_obj["reg"]:
-        promo_html = f"""
-        <div style="margin-top: 6px;">• Además, por los {tarifa_obj['meses_promo']} primeros meses <b>DEBERÁ PAGAR S/ {tarifa_obj['promo']:.2f} al mes</b>. Luego se le cobrará la tarifa regular. Los servicios adicionales no están incluidos en la promoción.</div>
-        """
-
-    tipo_router_html = "ONT" if tec_elegida == "FTTH" else "EMTA"
-    equipos_prestamo_html = ""
-    if tiene_telf:
-        equipos_prestamo_html += "<div>• 1 equipo telefónico con pantalla</div>"
-    if tiene_net:
-        equipos_prestamo_html += f"<div>• 1 equipo router {tipo_router_html} Incluye 4 puertos Ethernet y conexión Wifi</div>"
-    if cant_mesh > 0:
-        equipos_prestamo_html += f"<div>• {cant_mesh} equipo(s) repetidor(es) Wifi 360</div>"
-    if tiene_tv:
-        equipos_prestamo_html += "<div>• 1 Decodificadores que se incluyen en el plan</div>"
-        if cant_decos > 0:
-            equipos_prestamo_html += f"<div>• {cant_decos} Decodificadores adicionales</div>"
-
-    html_contrato_exacto = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-    <meta charset="utf-8">
-    <style>
-        body {{
-            margin: 0;
-            padding: 12px;
-            background-color: transparent;
-            font-family: 'Segoe UI', Arial, sans-serif;
-            color: #111111;
-        }}
-        .hoja {{
-            background: #ffffff;
-            border: 2px solid #0056b3;
-            border-radius: 6px;
-            padding: 30px 34px;
-            line-height: 1.55;
-            font-size: 13.5px;
-            box-shadow: 0 4px 14px rgba(0,0,0,0.15);
-        }}
-        .header {{
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 2px solid #eaeaea;
-            padding-bottom: 12px;
-            margin-bottom: 16px;
-        }}
-        .logo-claro {{
-            font-size: 24px;
-            font-weight: bold;
-            color: #DA291C;
-        }}
-        .titulo-centro {{
-            text-align: center;
-        }}
-        .titulo-centro .t1 {{
-            font-weight: 800;
-            font-size: 14px;
-            color: #000;
-        }}
-        .titulo-centro .t2 {{
-            font-weight: bold;
-            font-size: 12px;
-            color: #333;
-            margin-top: 2px;
-        }}
-        .renglon {{
-            margin-bottom: 8px;
-        }}
-        .legal {{
-            font-size: 11px;
-            color: #444;
-            line-height: 1.4;
-            text-align: justify;
-            margin-top: 10px;
-        }}
-    </style>
-    </head>
-    <body>
-        <div class="hoja">
-            <div class="header">
-                <div class="logo-claro">Claro empresas</div>
-                <div class="titulo-centro">
-                    <div class="t1">CONTRATO DE VOZ</div>
-                    <div class="t2">PLANES FIJOS CLARO EMPRESAS</div>
+    if vista_seleccionada == "📋 Validación de Datos (Puntos 1 al 7)":
+        html_validacion_separada = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <meta charset="utf-8">
+        <style>
+            body {{
+                margin: 0;
+                padding: 16px;
+                background-color: transparent;
+                font-family: 'Segoe UI', Arial, sans-serif;
+                color: #111111;
+            }}
+            .caja-validacion {{
+                background: #ffffff;
+                border: 2px solid #0056b3;
+                border-radius: 6px;
+                padding: 30px 34px;
+                line-height: 1.8;
+                font-size: 14.5px;
+                box-shadow: 0 4px 14px rgba(0,0,0,0.12);
+            }}
+            .linea-val {{
+                margin-bottom: 12px;
+            }}
+            .linea-val b {{
+                color: #000000;
+                font-weight: 700;
+            }}
+            .correo-link {{
+                color: #0044cc;
+                text-decoration: underline;
+                font-weight: 500;
+            }}
+            .box-indicar {{
+                margin-top: 24px;
+                background-color: #ffff00;
+                padding: 8px 14px;
+                display: inline-block;
+                font-weight: 900;
+                color: #d90000;
+                font-size: 14px;
+                border-radius: 3px;
+                border: 1px solid #e6e600;
+            }}
+        </style>
+        </head>
+        <body>
+            <div class="caja-validacion">
+                <div class="linea-val">
+                    <b>1) Numero de RUC:</b> {fd['ruc'] or ''}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>2) Razón Social:</b> {fd['razon_social'] or ''}
                 </div>
-                <div style="color: #DA291C; font-weight: bold; font-size: 20px;">Claro</div>
+                <div class="linea-val">
+                    <b>1) Su nombre y apellidos completos:</b> {fd['titular'] or ''}
+                </div>
+                <div class="linea-val">
+                    <b>2) Tipo y número de documento de identidad:</b> {doc_completo_texto}
+                </div>
+                <div class="linea-val">
+                    <b>3) Lugar de Nacimiento Y Fecha de Nacimiento:</b> {fd['lugar_fecha_nac'] or ''}
+                </div>
+                <div class="linea-val">
+                    <b>4) Nombres de sus padres:</b> {fd['padres'] or ''}
+                </div>
+                <div class="linea-val">
+                    <b>5) Número de contacto:</b> {fd['contacto'] or ''}
+                </div>
+                <div class="linea-val">
+                    <b>6) Dirección de instalacion y facturación:</b> {fd['direccion'] or ''}
+                </div>
+                <div class="linea-val">
+                    <b>7) Correo electrónico, ya que por ese medio se enviarán las condiciones de su plan y recibo del servicio:</b><br>
+                    <span class="correo-link">{fd['correo'] or ''}</span>
+                </div>
+                <div class="box-indicar">
+                    INDICAR: {fd['indicar']}
+                </div>
             </div>
+        </body>
+        </html>
+        """
+        components.html(html_validacion_separada, height=520, scrolling=True)
 
-            <p style="margin: 0 0 14px 0; text-align: justify;">
-                Yo <b>{asesor or '________________'}</b> Asesor (a) de Claro, voy a grabar su solicitud, hoy {fecha_input} a las {hora_input}. Por favor indique lo siguiente.
-            </p>
+    else:
+        nom_tec_html = "Fibra Óptica" if fd["tec_elegida"] == "FTTH" else "Fibra Coaxial"
+        nombre_plan_mostrar_html = normalizar_nombre_servicio(fd["servicio_sel"])
+        lista_cloud = obtener_servicios_cloud(tarifa_obj["cloud_count"])
+        cloud_items_html = "".join([f"<div>&nbsp;&nbsp;&nbsp;&nbsp;{c}</div>" for c in lista_cloud])
 
-            <div class="renglon"><b>1) Numero de RUC:</b> {ruc}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>2) Razón Social:</b> {razon_social}</div>
-            <div class="renglon"><b>1) Su nombre y apellidos completos:</b> {titular}</div>
-            <div class="renglon"><b>2) Tipo y número de documento de identidad:</b> {num_doc}</div>
-            <div class="renglon"><b>3) Lugar de Nacimiento Y Fecha de Nacimiento:</b> {lugar_fecha_nac}</div>
-            <div class="renglon"><b>4) Nombres de sus padres:</b> {padres}</div>
-            <div class="renglon"><b>5) Número de contacto:</b> {contacto}</div>
-            <div class="renglon"><b>6) Dirección de instalacion y facturación:</b> {direccion}</div>
-            <div class="renglon">
-                <b>7) Correo electrónico, ya que por ese medio se enviarán las condiciones de su plan y recibo del servicio:</b><br>
-                <span style="color: #0044cc; text-decoration: underline;">{correo}</span>
+        portabilidad_html = ""
+        if fd["tipo_solicitud"] == "Portabilidad":
+            portabilidad_html = f"""
+            <div style="margin-top: 14px; margin-bottom: 14px; padding: 10px 14px; background-color: #fcfcfc; border-left: 3px solid #DA291C;">
+                <div style="font-weight: bold; margin-bottom: 6px;">Por favor indique lo siguiente:</div>
+                <div>• Número que desea portar: <b>{fd['num_portar'] or '_________'}</b></div>
+                <div>• Empresa operadora actual: <b>{fd['operador'] or '_________'}</b></div>
+                <div>Modalidad de servicio: <b>{fd['modalidad_porta'] or '_________'}</b></div>
+                <div style="margin-top: 4px;">La portabilidad es gratuita y demora 24 horas desde la solicitud.</div>
             </div>
+            """
 
-            {portabilidad_html}
+        telf_html = ""
+        if tiene_telf:
+            telf_html = """
+            <div style="margin-top: 6px;">• Telefonía fija con 5000 minutos para llamar a destinos nacionales fijo y móvil 100 minutos para fijos de: E.E.U.U.(incluido Alaska y Hawái), México, Puerto Rico y Canadá.</div>
+            """
 
-            <hr style="border: 0; border-top: 1px solid #ddd; margin: 16px 0;">
+        tv_canales_html = ""
+        if tiene_tv:
+            if fd["tec_elegida"] == "FTTH":
+                tv_canales_html = "<div style='margin-top: 6px;'>• <b>Claro TV+ Estándar Pro con 105 canales</b></div>"
+            else:
+                tv_canales_html = "<div style='margin-top: 6px;'>• <b>Claro TV Estándar Pro con 62 canales en HD y 102 canales en Standard</b></div>"
 
-            <p style="margin: 0 0 10px 0; text-align: justify;">
-                Ud, solicitó el paquete <b>{servicio_sel} {nom_tec_html}</b> con costo mensual de <b>S/{tarifa_obj['reg']:.2f}</b>. La contratación y activación del paquete está sujeta a la verificación de facilidades técnicas en el domicilio indicado. Para lo cual, CLARO se contactará con Ud. al número brindado para coordinar la fecha de la visita de instalación.
-            </p>
+        wifi_html = ""
+        if fd["cant_mesh"] > 0:
+            wifi_html = f"""
+            <div style="margin-top: 6px;">• Recibirá un servicio WIFI 360 sin costo que incluye {fd['cant_mesh']} equipo(s) repetidor(es) en préstamo.</div>
+            """
 
-            <p style="margin: 0 0 10px 0; text-align: justify;">
-                La tarifa de instalación es de <b>S/0</b>. El cual se pagará en 6 cuotas mensuales de <b>S/0</b> durante 6 meses, a partir del primer recibo. Si cancela el servicio antes de los 6 meses, deberá pagar el monto restante.
-            </p>
+        bono_meses_val = tarifa_obj.get("meses_bono", 12)
+        bono_html = ""
+        if tarifa_obj["bono"] != "-":
+            bono_html = f"<div style='margin-top: 6px;'>• Por promoción los {bono_meses_val} primeros meses navegará a una velocidad de <b>{tarifa_obj['bono']} Megabits por segundo</b>.</div>"
 
-            <div style="font-weight: bold; margin-bottom: 4px;">El paquete incluye:</div>
-            {'<div>• Internet fijo con velocidad de <b>' + str(internet_val) + ' Mbps</b>. CLARO garantiza el 70% de la velocidad contratada.</div>' if tiene_net else ''}
-            {('<div style="margin-top: 4px;">• Servicios Cloud: Recibirá ' + str(len(lista_cloud)) + ' herramientas digitales (servicios cloud), las cuales son:</div>' + cloud_items_html + '<div style="font-size: 12px; color: #555; margin-top: 2px;">Se comunicaran con usted para efectuar la activación del beneficio si lo requiere.</div>') if lista_cloud else ''}
-            {tv_html}
-            {telf_html}
-            {wifi_html}
-            {('<div style="margin-top: 6px;">• Por promoción los ' + str(tarifa_obj.get('meses_bono', 12)) + ' primeros meses navegará a una velocidad de <b>' + str(tarifa_obj["bono"]) + ' Megabits por segundo</b>.</div>') if tarifa_obj["bono"] != "-" else ''}
-            {promo_html}
-            <div style="margin-top: 6px; font-size: 12px; color: #555;">Perderá la promoción si solicita la baja de uno o más de los servicios contratados, realice un cambio a un plan inferior, cambio de titularidad o cambio de número.</div>
+        promo_html = ""
+        if tarifa_obj["meses_promo"] > 0 and tarifa_obj["promo"] < tarifa_obj["reg"]:
+            promo_html = f"""
+            <div style="margin-top: 6px;">• Además, por los {tarifa_obj['meses_promo']} primeros meses <b>DEBERÁ PAGAR S/ {tarifa_obj['promo']:.2f} al mes</b>. Luego se le cobrará la tarifa regular. Los servicios adicionales no están incluidos en la promoción.</div>
+            """
 
-            <div style="font-weight: bold; margin-top: 12px; margin-bottom: 4px;">Ud. obtendrá equipos que serán entregados en préstamo y que deberá devolver en su totalidad al término de su contrato:</div>
-            {equipos_prestamo_html}
-            <div style="font-size: 12px; color: #555;">De no devolverlos, deberá pagar una penalidad.</div>
-
-            {('<div class="legal">Para activar el servicio Cloud es obligatorio brindar la siguiente información: Nombre, número, correo de la persona de contacto y correo empresarial.<br/>• Para velocidades desde 400 Mbps, si el cliente tiene Email Empresas y Microsoft 365, debe contar con un dominio propio para cada servicio; de lo contrario, solo podrá elegir uno (son excluyentes).<br/>• Para Email Empresas, Microsoft 365 y Tienda Virtual, el cliente debe contar con dominio propio. Si no tiene uno, Claro entregará un dominio .com gratis por 12 meses.<br/><b>Más información sobre Servicios Cloud: https://www.claro.com.pe/negocios/soluciones/cloud/</b></div>') if lista_cloud else ''}
-
-            <div style="margin-top: 14px; background-color: #ffff00; padding: 6px 10px; display: inline-block; font-weight: bold; color: red;">
-                "PARA COMPLETAR EL REGISTRO DE SU SOLICITUD, POR FAVOR, DIGA: '{indicar}'".
+        puntos_tv_html = ""
+        if tiene_tv:
+            puntos_tv_html = f"""
+            <div style="margin-top: 10px; margin-bottom: 8px;">
+                Puntos adicionales de TV por un total de S/0 al mes, adicional a su paquete, compuesto por {fd['cant_decos']} de Claro TV HDTV
             </div>
+            """
 
-            <div class="legal" style="margin-top: 10px;">
-                Le informo que CLARO, ubicado en Av. Nicolás Arriola N° 480, Santa Catalina, La Victoria, Lima, es el responsable del tratamiento de sus datos, los cuales se registran en el banco de datos de "Clientes" para gestionar la contratación de los servicios solicitados. CLARO podrá compartirlos con proveedores que realizan servicios por encargo, los cuales podrá conocer en la Política de Privacidad publicada en Claro.pe. Los datos brindados son necesarios para atender su solicitud, de lo contrario no podría ser atendida. Podrá ejercer sus derechos de Acceso, Rectificación, Cancelación y Oposición al correo electrónico proteccióndedatos@claro.com.pe.
-            </div>
+        tipo_router_html = "ONT" if fd["tec_elegida"] == "FTTH" else "EMTA"
+        equipos_prestamo_html = ""
+        if tiene_telf:
+            equipos_prestamo_html += "<div>• 1 equipo telefónico con pantalla</div>"
+        if tiene_net:
+            equipos_prestamo_html += f"<div>• 1 equipo router {tipo_router_html} Incluye 4 puertos Ethernet y conexión Wifi.</div>"
+        if fd["cant_mesh"] > 0:
+            equipos_prestamo_html += f"<div>• {fd['cant_mesh']} equipo(s) repetidor(es) Wifi 360</div>"
+        if tiene_tv:
+            equipos_prestamo_html += "<div>• 1 Decodificadores que se incluyen en el plan</div>"
+            if fd["cant_decos"] > 0:
+                equipos_prestamo_html += f"<div>• {fd['cant_decos']} Decodificadores adicionales</div>"
 
-            <div style="margin-top: 12px; font-weight: bold;">
-                Su código de solicitud es su número de documento de identidad
-            </div>
-            <div style="margin-top: 4px; font-weight: bold; color: #DA291C; font-size: 14px;">
-                ¡Te damos la bienvenida A LA FAMILIA CLARO!
-            </div>
-        </div>
-    </body>
-    </html>
-    """
+        html_contrato_exacto = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <meta charset="utf-8">
+        <style>
+            body {{
+                margin: 0;
+                padding: 12px;
+                background-color: transparent;
+                font-family: 'Segoe UI', Arial, sans-serif;
+                color: #111111;
+            }}
+            .hoja {{
+                background: #ffffff;
+                border: 2px solid #0056b3;
+                border-radius: 6px;
+                padding: 30px 34px;
+                line-height: 1.55;
+                font-size: 13.5px;
+                box-shadow: 0 4px 14px rgba(0,0,0,0.15);
+            }}
+            .header {{
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                border-bottom: 2px solid #eaeaea;
+                padding-bottom: 12px;
+                margin-bottom: 16px;
+            }}
+            .titulo-centro {{
+                text-align: right;
+            }}
+            .titulo-centro .t1 {{
+                font-weight: 800;
+                font-size: 14px;
+                letter-spacing: 0.5px;
+                color: #000;
+            }}
+            .titulo-centro .t2 {{
+                font-weight: bold;
+                font-size: 11.5px;
+                color: #333;
+                margin-top: 2px;
+            }}
+            .renglon {{
+                margin-bottom: 8px;
+            }}
+            .legal {{
+                font-size: 11px;
+                color: #444;
+                line-height: 1.4;
+                text-align: justify;
+                margin-top: 10px;
+            }}
+        </style>
+        </head>
+        <body>
+            <div class="hoja">
+                <div class="header">
+                    <div>{SVG_CLARO_EMPRESAS}</div>
+                    <div class="titulo-centro">
+                        <div class="t1">CONTRATO DE VOZ</div>
+                        <div class="t2">PLANES FIJOS CLARO EMPRESAS</div>
+                    </div>
+                </div>
 
-    components.html(html_contrato_exacto, height=750, scrolling=True)
+                <p style="margin: 0 0 14px 0; text-align: justify;">
+                    Yo <b>{fd['asesor'] or '________________'}</b> Asesor (a) de Claro, voy a grabar su solicitud, hoy {fd['fecha']} a las {fd['hora']}. Por favor indique lo siguiente.
+                </p>
+
+                <div class="renglon"><b>1) Numero de RUC:</b> {fd['ruc']}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>2) Razón Social:</b> {fd['razon_social']}</div>
+                <div class="renglon"><b>1) Su nombre y apellidos completos:</b> {fd['titular']}</div>
+                <div class="renglon"><b>2) Tipo y número de documento de identidad:</b> {doc_completo_texto}</div>
+                <div class="renglon"><b>3) Lugar de Nacimiento Y Fecha de Nacimiento:</b> {fd['lugar_fecha_nac']}</div>
+                <div class="renglon"><b>4) Nombres de sus padres:</b> {fd['padres']}</div>
+                <div class="renglon"><b>5) Número de contacto:</b> {fd['contacto']}</div>
+                <div class="renglon"><b>6) Dirección de instalacion y facturación:</b> {fd['direccion']}</div>
+                <div class="renglon">
+                    <b>7) Correo electrónico, ya que por ese medio se enviarán las condiciones de su plan y recibo del servicio:</b><br>
+                    <span style="color: #0044cc; text-decoration: underline;">{fd['correo']}</span>
+                </div>
+
+                {portabilidad_html}
+
+                <hr style="border: 0; border-top: 1px solid #ddd; margin: 16px 0;">
+
+                <p style="margin: 0 0 10px 0; text-align: justify;">
+                    Ud, solicitó el paquete <b>{nombre_plan_mostrar_html} {nom_tec_html}</b> con costo mensual de <b>S/{tarifa_obj['reg']:.2f}</b>. La contratación y activación del paquete está sujeta a la verificación de facilidades técnicas en el domicilio indicado. Para lo cual, CLARO se contactará con Ud. al número brindado para coordinar la fecha de la visita de instalación.
+                </p>
+
+                <p style="margin: 0 0 10px 0; text-align: justify;">
+                    La tarifa de instalación es de <b>S/0</b>. El cual se pagará en 6 cuotas mensuales de <b>S/0</b> durante 6 meses, a partir del primer recibo. Si cancela el servicio antes de los 6 meses, deberá pagar el monto restante.
+                </p>
+
+                <div style="font-weight: bold; margin-bottom: 4px;">El paquete incluye:</div>
+                {'<div>• Internet fijo con velocidad de <b>' + str(fd['internet_val']) + ' Mbps</b>. CLARO garantiza el 70% de la velocidad contratada.</div>' if tiene_net else ''}
+                {('<div style="margin-top: 4px;">• Servicios Cloud: Recibirá ' + str(len(lista_cloud)) + ' herramientas digitales (servicios cloud), las cuales son:</div>' + cloud_items_html + '<div style="font-size: 12px; color: #555; margin-top: 2px;">Se comunicaran con usted para efectuar la activación del beneficio si lo requiere.</div>') if lista_cloud else ''}
+                {tv_canales_html}
+
+                {telf_html}
+                {wifi_html}
+                {bono_html}
+                {promo_html}
+                <div style="margin-top: 6px; font-size: 12px; color: #555;">Perderá la promoción si solicita la baja de uno o más de los servicios contratados, realice un cambio a un plan inferior, cambio de titularidad o cambio de número.</div>
+
+                {puntos_tv_html}
+
+                <div style="font-weight: bold; margin-top: 12px; margin-bottom: 4px;">Ud. obtendrá equipos que serán entregados en préstamo y que deberá devolver en su totalidad al término de su contrato:</div>
+                {equipos_prestamo_html}
+                <div style="font-size: 12px; color: #555;">De no devolverlos, deberá pagar una penalidad.</div>
+
+                {('<div class="legal">Para activar el servicio Cloud es obligatorio brindar la siguiente información: Nombre, número, correo de la persona de contacto y correo empresarial.<br/>• Para velocidades desde 400 Mbps, si el cliente tiene Email Empresas y Microsoft 365, debe contar con un dominio propio para cada servicio; de lo contrario, solo practicale elegir uno (son excluyentes).<br/>• Para Email Empresas, Microsoft 365 y Tienda Virtual, el cliente debe contar con dominio propio. Si no tiene uno, Claro entregará un dominio .com gratis por 12 meses.<br/><b>Más información sobre Servicios Cloud: https://www.claro.com.pe/negocios/soluciones/cloud/</b></div>') if lista_cloud else ''}
+
+                <div style="margin-top: 14px; background-color: #ffff00; padding: 6px 10px; display: inline-block; font-weight: bold; color: red;">
+                    "PARA COMPLETAR EL REGISTRO DE SU SOLICITUD, POR FAVOR, DIGA: '{fd['indicar']}'".
+                </div>
+
+                <div class="legal" style="margin-top: 10px;">
+                    Le informo que CLARO, ubicado en Av. Nicolás Arriola N° 480, Santa Catalina, La Victoria, Lima, es el responsable del tratamiento de sus datos, los cuales se registran en el banco de datos de "Clientes" para gestionar la contratación de los servicios solicitados. CLARO podrá compartirlos con proveedores que realizan servicios por encargo, los cuales podrá conocer en la Política de Privacidad publicada en Claro.pe. Los datos brindados son necesarios para atender su solicitud, de lo contrario no podría ser atendida. Podrá ejercer sus derechos de Acceso, Rectificación, Cancelación y Oposición al correo electrónico proteccióndedatos@claro.com.pe.
+                </div>
+
+                <div style="margin-top: 12px; font-weight: bold;">
+                    Su código de solicitud es su número de documento de identidad
+                </div>
+                <div style="margin-top: 4px; font-weight: bold; color: #DA291C; font-size: 14px;">
+                    ¡Te damos la bienvenida A LA FAMILIA CLARO!
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        components.html(html_contrato_exacto, height=750, scrolling=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
     pdf_bytes = generar_pdf_contratos_completo(datos_actuales, plan_info_actual)
-    nombre_archivo = f"Contrato_Voz_{ruc if ruc.strip() else 'Borrador'}.pdf"
+    nombre_archivo = f"Contrato_Voz_{fd['ruc'] if fd['ruc'].strip() else 'Borrador'}.pdf"
 
     st.download_button(
         label="📥 Descargar Contrato de Voz en PDF (Formato Oficial Completo)",
