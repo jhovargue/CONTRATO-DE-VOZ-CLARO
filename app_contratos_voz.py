@@ -102,6 +102,7 @@ if "form_data" not in st.session_state:
         "servicio_sel": "1 PLAY",
         "tec_elegida": "FTTH",
         "internet_val": "200",
+        "variante_1500": "Estándar S/285" if "2 PLAY I+C" else "Estándar S/290",
         "cant_mesh": 1,
         "cant_decos": 0
     }
@@ -135,7 +136,8 @@ CATALOGO_PRECIOS = {
         "300": {"reg": 79.0, "promo": 79.0, "bono": "600", "meses_bono": 6, "meses_promo": 0, "cloud_count": 4},
         "400": {"reg": 89.0, "promo": 69.0, "bono": "1000", "meses_bono": 12, "meses_promo": 6, "cloud_count": 5},
         "800": {"reg": 100.0, "promo": 100.0, "bono": "1000", "meses_bono": 12, "meses_promo": 0, "cloud_count": 6},
-        "1000": {"reg": 145.0, "promo": 119.0, "bono": "1000", "meses_bono": 12, "meses_promo": 6, "cloud_count": 6}
+        "1000": {"reg": 145.0, "promo": 119.0, "bono": "1000", "meses_bono": 12, "meses_promo": 6, "cloud_count": 6},
+        "1500": {"reg": 200.0, "promo": 200.0, "bono": "-", "meses_bono": 0, "meses_promo": 0, "cloud_count": 6}
     },
     "1 PLAY TELF": {
         "NO APLICA": {"reg": 49.0, "promo": 49.0, "bono": "-", "meses_bono": 0, "meses_promo": 0, "cloud_count": 0}
@@ -145,25 +147,27 @@ CATALOGO_PRECIOS = {
         "300": {"reg": 84.0, "promo": 84.0, "bono": "600", "meses_bono": 6, "meses_promo": 0, "cloud_count": 4},
         "400": {"reg": 94.0, "promo": 74.0, "bono": "1000", "meses_bono": 12, "meses_promo": 6, "cloud_count": 5},
         "800": {"reg": 105.0, "promo": 105.0, "bono": "1000", "meses_bono": 12, "meses_promo": 0, "cloud_count": 6},
-        "1000": {"reg": 150.0, "promo": 150.0, "bono": "1000", "meses_bono": 12, "meses_promo": 0, "cloud_count": 6}
+        "1000": {"reg": 150.0, "promo": 150.0, "bono": "1000", "meses_bono": 12, "meses_promo": 0, "cloud_count": 6},
+        "1500": {"reg": 205.0, "promo": 205.0, "bono": "-", "meses_bono": 0, "meses_promo": 0, "cloud_count": 6}
     },
     "2 PLAY I+C": {
         "200": {"reg": 150.0, "promo": 89.0, "bono": "400", "meses_bono": 6, "meses_promo": 6, "cloud_count": 2},
         "300": {"reg": 160.0, "promo": 99.0, "bono": "600", "meses_bono": 6, "meses_promo": 6, "cloud_count": 4},
         "400": {"reg": 170.0, "promo": 109.0, "bono": "1000", "meses_bono": 12, "meses_promo": 6, "cloud_count": 5},
         "800": {"reg": 185.0, "promo": 185.0, "bono": "1000", "meses_bono": 12, "meses_promo": 0, "cloud_count": 6},
-        "1000": {"reg": 230.0, "promo": 230.0, "bono": "1000", "meses_bono": 12, "meses_promo": 0, "cloud_count": 6}
+        "1000": {"reg": 230.0, "promo": 230.0, "bono": "1000", "meses_bono": 12, "meses_promo": 0, "cloud_count": 6},
+        "1500": {"reg": 285.0, "promo": 285.0, "bono": "-", "meses_bono": 0, "meses_promo": 0, "cloud_count": 6}
     },
     "3 PLAY": {
         "200": {"reg": 155.0, "promo": 94.0, "bono": "400", "meses_bono": 6, "meses_promo": 6, "cloud_count": 2},
         "300": {"reg": 165.0, "promo": 104.0, "bono": "600", "meses_bono": 6, "meses_promo": 6, "cloud_count": 4},
         "400": {"reg": 175.0, "promo": 114.0, "bono": "1000", "meses_bono": 12, "meses_promo": 6, "cloud_count": 5},
         "800": {"reg": 190.0, "promo": 190.0, "bono": "1000", "meses_bono": 12, "meses_promo": 0, "cloud_count": 6},
-        "1000": {"reg": 235.0, "promo": 164.0, "bono": "1000", "meses_bono": 12, "meses_promo": 6, "cloud_count": 6}
+        "1000": {"reg": 235.0, "promo": 164.0, "bono": "1000", "meses_bono": 12, "meses_promo": 6, "cloud_count": 6},
+        "1500": {"reg": 290.0, "promo": 290.0, "bono": "-", "meses_bono": 0, "meses_promo": 0, "cloud_count": 6}
     }
 }
 
-# ORDEN CORREGIDO Y CONDICIONAL
 def obtener_servicios_cloud(cantidad):
     if cantidad == 2:
         return [
@@ -395,6 +399,7 @@ with col_reg3:
             "num_portar": "", "operador": "MOVISTAR", "modalidad_porta": "POSTPAGO",
             "campana_sel": "REGULAR",
             "servicio_sel": "1 PLAY", "tec_elegida": "FTTH", "internet_val": "200",
+            "variante_1500": "Estándar S/285",
             "cant_mesh": 1, "cant_decos": 0
         }
         st.session_state.last_loaded_ruc = None
@@ -544,11 +549,47 @@ with col_form:
 
         tiene_net = fd["servicio_sel"] in ["1 PLAY", "2 PLAY I+C", "2 PLAY I+T", "3 PLAY"]
         if tiene_net:
-            lista_spd = ["200", "300", "400", "800", "1000"]
+            # SE AÑADE 1500 MBPS A LA LISTA
+            lista_spd = ["200", "300", "400", "800", "1000", "1500"]
             idx_spd = lista_spd.index(fd["internet_val"]) if fd["internet_val"] in lista_spd else 0
             fd["internet_val"] = st.selectbox("internet (Velocidad Mbps):", lista_spd, index=idx_spd)
-            tarifa_base = CATALOGO_PRECIOS.get(fd["servicio_sel"], CATALOGO_PRECIOS["1 PLAY"]).get(fd["internet_val"], {"reg": 69.0, "promo": 69.0, "bono": "400", "meses_bono": 6, "meses_promo": 0, "cloud_count": 2})
+            tarifa_base = CATALOGO_PRECIOS.get(fd["servicio_sel"], CATALOGO_PRECIOS["1 PLAY"]).get(
+                fd["internet_val"],
+                {"reg": 69.0, "promo": 69.0, "bono": "400", "meses_bono": 6, "meses_promo": 0, "cloud_count": 2}
+            )
             tarifa_obj = dict(tarifa_base)
+
+            # MANEJO DE VARIANTES PARA 1500 MBPS EN 2 PLAY I+C Y 3 PLAY
+            if fd["internet_val"] == "1500":
+                if fd["servicio_sel"] == "2 PLAY I+C":
+                    opciones_1500 = [
+                        "Estándar Pro S/285 (Sin Descuento)",
+                        "Estándar Pro S/325 (Promo S/255 x 6 meses)"
+                    ]
+                    sel_var = st.selectbox("Modalidad Plan 1500 Mbps:", opciones_1500, index=0)
+                    if "S/325" in sel_var:
+                        tarifa_obj["reg"] = 325.0
+                        tarifa_obj["promo"] = 255.0
+                        tarifa_obj["meses_promo"] = 6
+                    else:
+                        tarifa_obj["reg"] = 285.0
+                        tarifa_obj["promo"] = 285.0
+                        tarifa_obj["meses_promo"] = 0
+
+                elif fd["servicio_sel"] == "3 PLAY":
+                    opciones_1500 = [
+                        "Estándar S/290 (Sin Descuento)",
+                        "Superior S/330 (Promo S/260 x 6 meses)"
+                    ]
+                    sel_var = st.selectbox("Modalidad Plan 1500 Mbps:", opciones_1500, index=0)
+                    if "S/330" in sel_var:
+                        tarifa_obj["reg"] = 330.0
+                        tarifa_obj["promo"] = 260.0
+                        tarifa_obj["meses_promo"] = 6
+                    else:
+                        tarifa_obj["reg"] = 290.0
+                        tarifa_obj["promo"] = 290.0
+                        tarifa_obj["meses_promo"] = 0
         else:
             fd["internet_val"] = "NO APLICA"
             tarifa_obj = dict(CATALOGO_PRECIOS["1 PLAY TELF"]["NO APLICA"])
