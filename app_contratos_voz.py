@@ -103,7 +103,7 @@ if "form_data" not in st.session_state:
         "tec_elegida": "FTTH",
         "internet_val": "600",
         "variante_1500": "Estándar S/285",
-        "cant_mesh": 1,
+        "cant_mesh": 2,
         "cant_decos": 0
     }
 
@@ -174,13 +174,14 @@ def obtener_servicios_cloud(cantidad):
             "1. Claro Drive Negocio: 100 GB",
             "2. Seguridad Empresas: 1 Licencia Antivirus"
         ]
+    
     lista = [
         "1. Claro Drive Negocio: 100 GB",
         "2. Claro Back Up: 15 GB para un equipo",
         "3. Seguridad Empresas: 1 Licencia Antivirus",
         "4. Email Empresas: 2 cuentas",
-        "5. Tienda Virtual: Plan Comienza",
-        "6. Microsoft 365: 1 Licencia Business Basic"
+        "5. Microsoft 365: 1 Licencia Business Basic",
+        "6. Tienda Virtual: Plan Comienza"
     ]
     return lista[:cantidad]
 
@@ -258,7 +259,6 @@ def generar_pdf_contratos_completo(datos, plan_info):
         p_net = f"• Internet fijo con velocidad de <b>{plan_info['internet']} Mbps</b>. CLARO garantiza el 70% de la velocidad contratada."
         story.append(Paragraph(p_net, p_body))
 
-    # SERVICIOS CLOUD
     clouds = obtener_servicios_cloud(plan_info["cloud_count"])
     if clouds:
         p_cloud_tit = f"• Servicios Cloud: Recibirá {len(clouds)} herramientas digitales (servicios cloud), las cuales son:"
@@ -267,12 +267,10 @@ def generar_pdf_contratos_completo(datos, plan_info):
             story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;{c}", p_body))
         story.append(Paragraph("Se comunicaran con usted para efectuar la activación del beneficio si lo requiere.", p_body))
 
-    # ORDEN OFICIAL: 1. TELEFONÍA FIJA
     if plan_info["tiene_telf"]:
         p_telf = "• Telefonía fija con 5000 minutos para llamar a destinos nacionales fijo y móvil; 100 minutos para fijos de: EE.UU. (incluido Alaska y Hawái), México, Puerto Rico y Canadá."
         story.append(Paragraph(p_telf, p_body))
 
-    # ORDEN OFICIAL: 2. CLARO TV (LUEGO DE TELEFONÍA)
     if plan_info["tiene_tv"]:
         if plan_info["tecnologia"] == "FTTH":
             p_tv = "• <b>Claro TV+ Estándar Pro con 105 canales</b>"
@@ -282,7 +280,10 @@ def generar_pdf_contratos_completo(datos, plan_info):
 
     cant_mesh = plan_info["cant_mesh"]
     if cant_mesh > 0:
-        p_wifi = f"• Recibirá un servicio WIFI 360 sin costo que incluye {cant_mesh} equipo(s) repetidor(es) en préstamo."
+        if cant_mesh == 1:
+            p_wifi = "• Recibirá un servicio WIFI 360 sin costo que incluye 1 equipo repetidor en préstamo."
+        else:
+            p_wifi = f"• Recibirá {cant_mesh} servicios WIFI 360 sin costo que incluye {cant_mesh} equipos repetidores en préstamo."
         story.append(Paragraph(p_wifi, p_body))
 
     if plan_info["bono"] != "-":
@@ -310,7 +311,8 @@ def generar_pdf_contratos_completo(datos, plan_info):
         tipo_router_pdf = "ONT" if plan_info["tecnologia"] == "FTTH" else "EMTA"
         story.append(Paragraph(f"• 1 equipo router {tipo_router_pdf} Incluye 4 puertos Ethernet y conexión Wifi.", p_body))
     if cant_mesh > 0:
-        story.append(Paragraph(f"• {cant_mesh} equipo(s) repetidor(es) Wifi 360", p_body))
+        palabra_rep = "equipo repetidor" if cant_mesh == 1 else "equipos repetidores"
+        story.append(Paragraph(f"• {cant_mesh} {palabra_rep} Wifi 360", p_body))
     if plan_info["tiene_tv"]:
         story.append(Paragraph("• 1 Decodificadores que se incluyen en el plan", p_body))
         if cant_decos > 0:
@@ -402,7 +404,7 @@ with col_reg3:
             "campana_sel": "REGULAR",
             "servicio_sel": "1 PLAY", "tec_elegida": "FTTH", "internet_val": "200",
             "variante_1500": "Estándar S/285",
-            "cant_mesh": 1, "cant_decos": 0
+            "cant_mesh": 2, "cant_decos": 0
         }
         st.session_state.last_loaded_ruc = None
         st.rerun()
@@ -806,9 +808,14 @@ with col_preview:
 
         wifi_html = ""
         if fd["cant_mesh"] > 0:
-            wifi_html = f"""
-            <div style="margin-top: 6px;">• Recibirá un servicio WIFI 360 sin costo que incluye {fd['cant_mesh']} equipo(s) repetidor(es) en préstamo.</div>
-            """
+            if fd["cant_mesh"] == 1:
+                wifi_html = """
+                <div style="margin-top: 6px;">• Recibirá un servicio WIFI 360 sin costo que incluye 1 equipo repetidor en préstamo.</div>
+                """
+            else:
+                wifi_html = f"""
+                <div style="margin-top: 6px;">• Recibirá {fd['cant_mesh']} servicios WIFI 360 sin costo que incluye {fd['cant_mesh']} equipos repetidores en préstamo.</div>
+                """
 
         bono_meses_val = tarifa_obj.get("meses_bono", 12)
         bono_html = ""
@@ -836,7 +843,8 @@ with col_preview:
         if tiene_net:
             equipos_prestamo_html += f"<div>• 1 equipo router {tipo_router_html} Incluye 4 puertos Ethernet y conexión Wifi.</div>"
         if fd["cant_mesh"] > 0:
-            equipos_prestamo_html += f"<div>• {fd['cant_mesh']} equipo(s) repetidor(es) Wifi 360</div>"
+            palabra_rep_html = "equipo repetidor" if fd["cant_mesh"] == 1 else "equipos repetidores"
+            equipos_prestamo_html += f"<div>• {fd['cant_mesh']} {palabra_rep_html} Wifi 360</div>"
         if tiene_tv:
             equipos_prestamo_html += "<div>• 1 Decodificadores que se incluyen en el plan</div>"
             if fd["cant_decos"] > 0:
