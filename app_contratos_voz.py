@@ -99,9 +99,9 @@ if "form_data" not in st.session_state:
         "operador": "MOVISTAR",
         "modalidad_porta": "POSTPAGO",
         "campana_sel": "REGULAR",
-        "servicio_sel": "1 PLAY",
+        "servicio_sel": "3 PLAY",
         "tec_elegida": "FTTH",
-        "internet_val": "200",
+        "internet_val": "600",
         "variante_1500": "Estándar S/285",
         "cant_mesh": 1,
         "cant_decos": 0
@@ -130,7 +130,6 @@ def dibujar_logo_claro_empresas_pdf():
     d.add(String(58, 6, "empresas", fontName="Helvetica-Bold", fontSize=16, fillColor=colors.black))
     return d
 
-# CATÁLOGO ACTUALIZADO CON NUEVAS VELOCIDADES Y PROMOCIONES
 CATALOGO_PRECIOS = {
     "1 PLAY": {
         "200": {"reg": 69.0, "promo": 69.0, "bono": "400", "meses_bono": 6, "meses_promo": 0, "cloud_count": 2},
@@ -175,7 +174,6 @@ def obtener_servicios_cloud(cantidad):
             "1. Claro Drive Negocio: 100 GB",
             "2. Seguridad Empresas: 1 Licencia Antivirus"
         ]
-    
     lista = [
         "1. Claro Drive Negocio: 100 GB",
         "2. Claro Back Up: 15 GB para un equipo",
@@ -260,6 +258,7 @@ def generar_pdf_contratos_completo(datos, plan_info):
         p_net = f"• Internet fijo con velocidad de <b>{plan_info['internet']} Mbps</b>. CLARO garantiza el 70% de la velocidad contratada."
         story.append(Paragraph(p_net, p_body))
 
+    # SERVICIOS CLOUD
     clouds = obtener_servicios_cloud(plan_info["cloud_count"])
     if clouds:
         p_cloud_tit = f"• Servicios Cloud: Recibirá {len(clouds)} herramientas digitales (servicios cloud), las cuales son:"
@@ -268,16 +267,18 @@ def generar_pdf_contratos_completo(datos, plan_info):
             story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;{c}", p_body))
         story.append(Paragraph("Se comunicaran con usted para efectuar la activación del beneficio si lo requiere.", p_body))
 
+    # ORDEN OFICIAL: 1. TELEFONÍA FIJA
+    if plan_info["tiene_telf"]:
+        p_telf = "• Telefonía fija con 5000 minutos para llamar a destinos nacionales fijo y móvil; 100 minutos para fijos de: EE.UU. (incluido Alaska y Hawái), México, Puerto Rico y Canadá."
+        story.append(Paragraph(p_telf, p_body))
+
+    # ORDEN OFICIAL: 2. CLARO TV (LUEGO DE TELEFONÍA)
     if plan_info["tiene_tv"]:
         if plan_info["tecnologia"] == "FTTH":
             p_tv = "• <b>Claro TV+ Estándar Pro con 105 canales</b>"
         else:
             p_tv = "• <b>Claro TV Estándar Pro con 62 canales en HD y 102 canales en Standard</b>"
         story.append(Paragraph(p_tv, p_body))
-
-    if plan_info["tiene_telf"]:
-        p_telf = "• Telefonía fija con 5000 minutos para llamar a destinos nacionales fijo y móvil; 100 minutos para fijos de: EE.UU. (incluido Alaska y Hawái), México, Puerto Rico y Canadá."
-        story.append(Paragraph(p_telf, p_body))
 
     cant_mesh = plan_info["cant_mesh"]
     if cant_mesh > 0:
@@ -541,7 +542,7 @@ with col_form:
         fd["campana_sel"] = st.selectbox("Campaña:", lista_camp, index=idx_camp)
 
         lista_serv = ["1 PLAY", "1 PLAY TELF", "2 PLAY I+C", "2 PLAY I+T", "3 PLAY"]
-        idx_serv = lista_serv.index(fd["servicio_sel"]) if fd["servicio_sel"] in lista_serv else 0
+        idx_serv = lista_serv.index(fd["servicio_sel"]) if fd["servicio_sel"] in lista_serv else 4
         fd["servicio_sel"] = st.selectbox("SERVICIO:", lista_serv, index=idx_serv)
 
         lista_tec = ["FTTH", "HFC"]
@@ -550,7 +551,6 @@ with col_form:
 
         tiene_net = fd["servicio_sel"] in ["1 PLAY", "2 PLAY I+C", "2 PLAY I+T", "3 PLAY"]
         if tiene_net:
-            # LISTA ACTUALIZADA CON 600 Y 850 MBPS
             lista_spd = ["200", "300", "600", "850", "1000", "1500"]
             if fd["internet_val"] not in lista_spd:
                 fd["internet_val"] = "200"
@@ -951,9 +951,9 @@ with col_preview:
                 <div style="font-weight: bold; margin-bottom: 4px;">El paquete incluye:</div>
                 {'<div>• Internet fijo con velocidad de <b>' + str(fd['internet_val']) + ' Mbps</b>. CLARO garantiza el 70% de la velocidad contratada.</div>' if tiene_net else ''}
                 {('<div style="margin-top: 4px;">• Servicios Cloud: Recibirá ' + str(len(lista_cloud)) + ' herramientas digitales (servicios cloud), las cuales son:</div>' + cloud_items_html + '<div style="font-size: 12px; color: #555; margin-top: 2px;">Se comunicaran con usted para efectuar la activación del beneficio si lo requiere.</div>') if lista_cloud else ''}
-                {tv_canales_html}
-
+                
                 {telf_html}
+                {tv_canales_html}
                 {wifi_html}
                 {bono_html}
                 {promo_html}
