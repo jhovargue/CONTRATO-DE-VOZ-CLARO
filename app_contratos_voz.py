@@ -168,19 +168,27 @@ CATALOGO_PRECIOS = {
     }
 }
 
-def obtener_servicios_cloud(cantidad):
+# ORDEN OFICIAL Y ASIGNACIÓN DINÁMICA DE LICENCIAS DE MICROSOFT 365
+def obtener_servicios_cloud(cantidad, velocidad_mbps="200"):
     if cantidad == 2:
         return [
             "1. Claro Drive Negocio: 100 GB",
             "2. Seguridad Empresas: 1 Licencia Antivirus"
         ]
     
+    try:
+        vel_num = int(str(velocidad_mbps).strip())
+    except ValueError:
+        vel_num = 0
+
+    licencias_m365 = "2 Licencias Business Basic" if vel_num >= 1000 else "1 Licencia Business Basic"
+    
     lista = [
         "1. Claro Drive Negocio: 100 GB",
         "2. Claro Back Up: 15 GB para un equipo",
         "3. Seguridad Empresas: 1 Licencia Antivirus",
         "4. Email Empresas: 2 cuentas",
-        "5. Microsoft 365: 1 Licencia Business Basic",
+        f"5. Microsoft 365: {licencias_m365}",
         "6. Tienda Virtual: Plan Comienza"
     ]
     return lista[:cantidad]
@@ -259,7 +267,7 @@ def generar_pdf_contratos_completo(datos, plan_info):
         p_net = f"• Internet fijo con velocidad de <b>{plan_info['internet']} Mbps</b>. CLARO garantiza el 70% de la velocidad contratada."
         story.append(Paragraph(p_net, p_body))
 
-    clouds = obtener_servicios_cloud(plan_info["cloud_count"])
+    clouds = obtener_servicios_cloud(plan_info["cloud_count"], plan_info["internet"])
     if clouds:
         p_cloud_tit = f"• Servicios Cloud: Recibirá {len(clouds)} herramientas digitales (servicios cloud), las cuales son:"
         story.append(Paragraph(p_cloud_tit, p_body))
@@ -778,7 +786,7 @@ with col_preview:
     else:
         nom_tec_html = "Fibra Óptica" if fd["tec_elegida"] == "FTTH" else "Fibra Coaxial"
         nombre_plan_mostrar_html = normalizar_nombre_servicio(fd["servicio_sel"])
-        lista_cloud = obtener_servicios_cloud(tarifa_obj["cloud_count"])
+        lista_cloud = obtener_servicios_cloud(tarifa_obj["cloud_count"], fd["internet_val"])
         cloud_items_html = "".join([f"<div>&nbsp;&nbsp;&nbsp;&nbsp;{c}</div>" for c in lista_cloud])
 
         portabilidad_html = ""
@@ -855,7 +863,7 @@ with col_preview:
             texto_legal_cloud_html = """
             <div class="legal">
                 Para activar el servicio Cloud es obligatorio brindar la siguiente información: Nombre, número, correo de la persona de contacto y correo empresarial.<br/>
-                • Para velocidades desde 400 Mbps, si el cliente tiene Email Empresas y Microsoft 365, debe contar con un dominio propio para cada servicio; de lo contrario, solo podrá elegir uno (son excluyentes).<br/>
+                • Para velocidades desde 400 Mbps, si el cliente tiene Email Empresas y Microsoft 365, debe contar con un dominio propio para cada servicio; de lo contrario, solo practicale elegir uno (son excluyentes).<br/>
                 • Para Email Empresas, Microsoft 365 y Tienda Virtual, el cliente debe contar con dominio propio. Si no tiene uno, Claro entregará un dominio .com gratis por 12 meses.<br/>
                 <b>Más información sobre Servicios Cloud: https://www.claro.com.pe/negocios/soluciones/cloud/</b>
             </div>
